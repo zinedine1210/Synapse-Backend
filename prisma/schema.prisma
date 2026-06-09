@@ -1,0 +1,553 @@
+// Synapse Backend – Prisma Schema
+// PostgreSQL via Supabase
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==============================
+// Enums
+// ==============================
+
+enum Role {
+  USER
+  SUPERADMIN
+}
+
+enum ForumCategory {
+  DISCUSSION
+  QUESTION
+  ANNOUNCEMENT
+  POLL
+  REMINDER
+}
+
+enum TaskType {
+  ESSAY
+  MULTIPLE_CHOICE
+  MIXED
+}
+
+enum Visibility {
+  SHARED
+  PRIVATE
+}
+
+
+// ==============================
+// Models
+// ==============================
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  fullName      String
+  avatarUrl     String?
+  role          Role           @default(USER)
+  plan          String         @default("FREE")
+  uploadCount   Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  classes       ClassMember[]
+  payments      Payment[]
+  attempts      QuizAttempt[]
+  notifications Notification[]
+  pricingPlan   PricingPlan    @relation(fields: [plan], references: [name])
+  forumPosts    ForumPost[]
+  forumReplies  ForumReply[]
+  forumVotes    ForumVote[]
+  forumDiscussions ForumDiscussion[]
+  pollVotes     ForumPollVote[]
+  kolektifTx    KolektifTransaction[]
+  taskSubmissions TaskSubmission[]
+  taskGroupMembers TaskGroupMember[]
+  forumReadStatuses ForumReadStatus[]
+}
+
+model Class {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  ownerId     String
+  lecturer    String?
+  day         String?
+  time        String?
+  room        String?
+  password    String?
+  forumReadStatuses ForumReadStatus[]
+  code        String?          @unique
+  joinMode    String           @default("PUBLIC") // "PUBLIC" | "APPROVAL"
+  autoRoleAssign Boolean       @default(false) // auto-assign Admin role to new members
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  sessions        Session[]
+  members         ClassMember[]
+  roles           ClassRole[]
+  forumPosts      ForumPost[]
+  forumDiscussions ForumDiscussion[]
+  kolektif        Kolektif[]
+  tasks           Task[]
+  taskGroups      TaskGroup[]
+  examPredictions ExamPrediction[]
+  customTabs      ClassCustomTab[]
+}
+
+model ClassMember {
+  id        String  @id @default(uuid())
+  classId   String
+  userId    String
+  role      String  // "OWNER" | "MEMBER"
+  status    String  @default("ACTIVE") // "ACTIVE" | "PENDING"
+  classRoleId String?
+
+  class     Class      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classRole ClassRole? @relation(fields: [classRoleId], references: [id], onDelete: SetNull)
+
+  @@unique([classId, userId])
+}
+
+model ClassRole {
+  id          String   @id @default(uuid())
+  classId     String
+  name        String   // e.g. "Bendahara", "Sekretaris", "Koordinator"
+  permissions String[] // e.g. ["MANAGE_KAS", "EDIT_CLASS", "MANAGE_MEMBERS", ...]
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  class   Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  members ClassMember[]
+
+  @@unique([classId, name])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  classId   String
+  title     String
+  sequence  Int      // 1-16
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class       Class              @relation(fields: [classId], references: [id], onDelete: Cascade)
+  materials   Material[]
+  quizzes     Quiz[]
+  tasks       Task[]
+  discussions ForumDiscussion[]
+
+  @@index([classId])
+}
+
+model Material {
+  id          String     @id @default(uuid())
+  sessionId   String
+  uploaderId  String?
+  fileName    String
+  fileUrl     String
+  fileType    String     // "PDF" | "AUDIO" | "IMAGE"
+  fileSizeBytes Int?
+  aiSummary   String?    @db.Text
+  status      String     @default("PENDING")
+  errorMsg    String?
+  visibility  Visibility @default(SHARED)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([status])
+}
+
+model Quiz {
+  id          String   @id @default(uuid())
+  sessionId   String
+  question    String   @db.Text // Soal AI (JSON format untuk pilihan ganda)
+  answerKey   String
+  explanation String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  session  Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  attempts QuizAttempt[]
+}
+
+model QuizAttempt {
+  id        String   @id @default(uuid())
+  quizId    String
+  userId    String
+  score     Int
+  passed    Boolean
+  answers   String?  @db.Text // JSON snapshot jawaban user
+  createdAt DateTime @default(now())
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  userId            String
+  orderId           String   @unique // ID Transaksi Midtrans
+  snapToken         String?
+  grossAmount       Float
+  transactionStatus String   // "pending" | "settlement" | "expire" | "cancel"
+  plan              String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+// Config kuota & akses fitur per plan (dikontrol dari Superadmin)
+model PricingPlan {
+  id                String   @id @default(uuid())
+  name              String   @unique // e.g. "FREE", "PRO"
+  description       String?
+  maxUploadPerMonth Int      @default(5)
+  maxFileSizeMb     Int      @default(10)
+  aiRequestLimit    Int      @default(10)
+  features          String[] // e.g. ["class", "quiz", "schedule_parser", "pdf_export"]
+  price             Float    @default(0)
+  durationDays      Int      @default(0) // 0 = unlimited, 30 = 1 month, 365 = 1 year
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  users             User[]
+}
+
+// ==============================
+// Forum, Polls, Attachments & Reminders
+// ==============================
+
+model ForumDiscussion {
+  id              String   @id @default(uuid())
+  classId         String
+  authorId        String
+  title           String
+  description     String?  @db.Text
+  taskId          String?  // optional: linked task for context
+  sessionId       String?  // optional: linked session/pertemuan for context
+  assignType      String   @default("ALL") // ALL, INDIVIDUAL, GROUP
+  assignedUserIds String[] // userId array when assignType = INDIVIDUAL
+  assignedGroupId String?  // TaskGroup ID when assignType = GROUP
+  isDefault       Boolean  @default(false) // true for "Umum" discussion
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  class   Class      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  author  User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  task    Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  session Session?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  posts   ForumPost[]
+
+  @@index([classId])
+}
+
+model ForumPost {
+  id           String        @id @default(uuid())
+  classId      String
+  authorId     String
+  discussionId String?
+  title        String
+  content      String        @db.Text
+  category     ForumCategory @default(DISCUSSION)
+  isPinned     Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  class       Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  discussion  ForumDiscussion?  @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  replies     ForumReply[]
+  votes       ForumVote[]
+  poll        ForumPoll?
+  attachments ForumAttachment[]
+  reminder    ForumReminder?
+
+  @@index([classId])
+  @@index([discussionId])
+}
+
+model ForumReply {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post        ForumPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  votes       ForumVote[]
+  attachments ForumAttachment[]
+
+  @@index([postId])
+}
+
+model ForumVote {
+  id       String  @id @default(uuid())
+  userId   String
+  postId   String?
+  replyId  String?
+  value    Int     // +1 or -1
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post  ForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reply ForumReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@unique([userId, replyId])
+}
+
+model ForumPoll {
+  id        String           @id @default(uuid())
+  postId    String           @unique
+  question  String
+  multiple  Boolean          @default(false) // allow multi-select
+  createdAt DateTime         @default(now())
+
+  post    ForumPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  options ForumPollOption[]
+}
+
+model ForumPollOption {
+  id     String          @id @default(uuid())
+  pollId String
+  label  String
+  order  Int             @default(0)
+
+  poll  ForumPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes ForumPollVote[]
+}
+
+model ForumPollVote {
+  id       String @id @default(uuid())
+  optionId String
+  userId   String
+
+  option ForumPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, userId])
+}
+
+model ForumAttachment {
+  id        String   @id @default(uuid())
+  postId    String?
+  replyId   String?
+  uploaderName String?
+  fileName  String
+  fileUrl   String
+  fileType  String   // "IMAGE" | "DOCUMENT" | "OTHER"
+  fileSizeBytes Int?
+  createdAt DateTime @default(now())
+
+  post  ForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reply ForumReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
+}
+
+model ForumReminder {
+  id        String   @id @default(uuid())
+  postId    String   @unique
+  remindAt  DateTime
+  sent      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  post ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model ForumReadStatus {
+  id           String   @id @default(uuid())
+  userId       String
+  classId      String
+  discussionId String?  // null = "Umum" discussion
+  lastReadAt   DateTime @default(now())
+
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, classId, discussionId])
+}
+
+// ==============================
+// Kolektif (Treasury / Kas Kelas)
+// ==============================
+
+model Kolektif {
+  id              String   @id @default(uuid())
+  classId         String
+  name            String   // e.g. "Kas Semester 5", "Patungan Modul"
+  description     String?
+  targetAmount    Float?
+  targetPerPerson Float?   // Target iuran per anggota
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  class        Class                 @relation(fields: [classId], references: [id], onDelete: Cascade)
+  transactions KolektifTransaction[]
+}
+
+model KolektifTransaction {
+  id          String   @id @default(uuid())
+  kolektifId  String
+  userId      String
+  amount      Float
+  type        String   // "IN" | "OUT"
+  description String?
+  createdAt   DateTime @default(now())
+
+  kolektif Kolektif @relation(fields: [kolektifId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==============================
+// Tugas (Tasks / Assignments)
+// ==============================
+
+model Task {
+  id              String     @id @default(uuid())
+  classId         String
+  sessionId       String?    // null = class-wide task
+  title           String
+  description     String?    @db.Text
+  descriptionImageUrl String? // uploaded photo of the task/soal
+  taskType        TaskType   @default(MIXED)
+  deadline        DateTime?
+  visibility      Visibility @default(SHARED)
+  assignType      String     @default("ALL") // "ALL" | "INDIVIDUAL" | "GROUP"
+  assignedUserIds String[]   // userId array when assignType = INDIVIDUAL
+  createdById     String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  class       Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  session     Session?         @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  submissions TaskSubmission[]
+  discussions ForumDiscussion[]
+  taskGroup   TaskGroup?       @relation(fields: [taskGroupId], references: [id])
+  taskGroupId String?
+
+  @@index([classId])
+  @@index([sessionId])
+  @@index([deadline])
+}
+
+model TaskSubmission {
+  id          String   @id @default(uuid())
+  taskId      String
+  userId      String
+  content     String?  @db.Text  // manual text input
+  imageUrl    String?            // uploaded image of question
+  aiAnswer    String?  @db.Text  // AI generated answer
+  visibility  String   @default("PRIVATE") // PRIVATE | PUBLIC
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([userId])
+}
+
+model TaskGroup {
+  id        String   @id @default(uuid())
+  classId   String
+  name      String   // e.g. "Kelompok 1"
+  createdAt DateTime @default(now())
+
+  class   Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  members TaskGroupMember[]
+  tasks   Task[]
+}
+
+model TaskGroupMember {
+  id        String @id @default(uuid())
+  groupId   String
+  userId    String
+
+  group TaskGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+// ==============================
+// Exam Predictions (Prediksi Ujian)
+// ==============================
+
+model ExamPrediction {
+  id          String   @id @default(uuid())
+  classId     String
+  title       String   // "UTS Genap 2025", "UAS Semester 5"
+  description String?  @db.Text
+  createdById String
+  sessionIds  String[] // Pertemuan mana saja yang masuk ujian
+  source      String   // "AI_GENERATED" | "UPLOADED" | "KISI_KISI" | "MANUAL"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  class     Class                    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  questions ExamPredictionQuestion[]
+
+  @@index([classId])
+}
+
+model ExamPredictionQuestion {
+  id           String   @id @default(uuid())
+  predictionId String
+  type         String   // "ESSAY" | "MULTIPLE_CHOICE"
+  question     String   @db.Text
+  options      String?  @db.Text // JSON array for multiple choice
+  answerKey    String?  @db.Text
+  explanation  String?  @db.Text
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  prediction ExamPrediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+}
+
+model ClassCustomTab {
+  id           String   @id @default(uuid())
+  classId      String
+  discussionId String?  // null = "Umum" discussion
+  name         String
+  content      String   @default("") @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  class Class              @relation(fields: [classId], references: [id], onDelete: Cascade)
+  files ClassCustomTabFile[]
+}
+
+model ClassCustomTabFile {
+  id            String   @id @default(uuid())
+  tabId         String
+  fileName      String
+  fileUrl       String
+  fileType      String   // "IMAGE" | "DOCUMENT" | "OTHER"
+  fileSizeBytes Int?
+  uploadedById  String?
+  createdAt     DateTime @default(now())
+
+  tab ClassCustomTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
+}
+
