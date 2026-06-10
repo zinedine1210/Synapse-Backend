@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ClassService } from './class.service';
 import { CreateClassDto } from './dto/create-class.dto';
@@ -42,6 +43,7 @@ export class ClassController {
 
   /** POST /api/v1/classes/resolve-code – Resolve class code to UUID */
   @Post('resolve-code')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   resolveCode(@Body('code') code: string) {
     return this.classService.resolveClassCode(code);
   }
@@ -145,6 +147,7 @@ export class ClassController {
 
   /** GET /api/v1/classes/code-info/:code – Info kelas via kode */
   @Get('code-info/:code')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   getClassInfoByCode(@Param('code') code: string) {
     return this.classService.getClassInfoByCode(code);
   }
