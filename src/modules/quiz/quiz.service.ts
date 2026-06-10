@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
@@ -15,6 +15,19 @@ export class QuizService {
   ) {}
 
   async generateQuiz(user: User, dto: GenerateQuizDto) {
+    // Verify user is a member of the class that owns these sessions
+    const sessions = await this.prisma.session.findMany({
+      where: { id: { in: dto.sessionIds } },
+      select: { classId: true },
+    });
+    const classIds = [...new Set(sessions.map(s => s.classId))];
+    for (const classId of classIds) {
+      const member = await this.prisma.classMember.findUnique({
+        where: { classId_userId: { classId, userId: user.id } },
+      });
+      if (!member) throw new ForbiddenException('Anda bukan anggota kelas ini.');
+    }
+
     // Kumpulkan semua AI summary dari sesi yang dipilih
     const materials = await this.prisma.material.findMany({
       where: {
