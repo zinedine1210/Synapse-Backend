@@ -17,6 +17,11 @@ import { KolektifModule } from './modules/kolektif/kolektif.module';
 import { TaskModule } from './modules/task/task.module';
 import { GroupModule } from './modules/group/group.module';
 import { ExamPredictionModule } from './modules/exam-prediction/exam-prediction.module';
+import { DuitTrackerModule } from './modules/duit-tracker/duit-tracker.module';
+import { SiBawelModule } from './modules/si-bawel/si-bawel.module';
+import { TodoModule } from './modules/todo/todo.module';
+import { QnaModule } from './modules/qna/qna.module';
+import { BriefingModule } from './modules/briefing/briefing.module';
 import { validateEnv } from './config/env.validation';
 
 @Module({
@@ -52,6 +57,11 @@ import { validateEnv } from './config/env.validation';
     TaskModule,
     GroupModule,
     ExamPredictionModule,
+    DuitTrackerModule,
+    SiBawelModule,
+    TodoModule,
+    QnaModule,
+    BriefingModule,
   ],
   providers: [
     // ─── Global Rate Limit Guard ──────────────────────────────────────────────
