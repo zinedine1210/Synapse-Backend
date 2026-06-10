@@ -11,6 +11,31 @@ import { PrismaService } from '../../database/prisma.service';
 import { ForumGateway } from './forum.gateway';
 import { NotificationService } from '../notification/notification.service';
 import { CreatePostDto, CreateReplyDto, CreateDiscussionDto, UpdateDiscussionDto } from './dto/forum.dto';
+import * as sanitizeHtml from 'sanitize-html';
+
+// Whitelist tags that Tiptap editor produces
+const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: [
+    'b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'code', 'pre', 'blockquote', 'strike', 's', 'u', 'sub', 'sup',
+    'table', 'thead', 'tbody', 'tr', 'td', 'th',
+    'img', 'hr', 'span', 'div',
+  ],
+  allowedAttributes: {
+    a: ['href', 'target', 'rel'],
+    img: ['src', 'alt', 'width', 'height'],
+    span: ['style'],
+    td: ['colspan', 'rowspan'],
+    th: ['colspan', 'rowspan'],
+    code: ['class'],
+    pre: ['class'],
+  },
+  allowedSchemes: ['http', 'https', 'mailto'],
+  allowedSchemesByTag: {
+    img: ['http', 'https', 'data'],
+  },
+};
 
 @Injectable()
 export class ForumService {
@@ -89,6 +114,10 @@ export class ForumService {
   /** Buat post baru */
   async createPost(classId: string, userId: string, dto: CreatePostDto) {
     const member = await this.ensureMember(classId, userId);
+
+    // Sanitize HTML content to prevent XSS
+    dto.content = sanitizeHtml(dto.content, SANITIZE_OPTIONS);
+    if (dto.title) dto.title = sanitizeHtml(dto.title, { allowedTags: [], allowedAttributes: {} });
 
     // Hanya user dengan izin FORUM_ANNOUNCEMENT yang boleh buat ANNOUNCEMENT
     if (dto.category === 'ANNOUNCEMENT' && !this.hasPermission(member, 'FORUM_ANNOUNCEMENT')) {
@@ -271,6 +300,9 @@ export class ForumService {
     });
     if (!post) throw new NotFoundException('Post tidak ditemukan.');
     await this.ensureMember(post.classId, userId);
+
+    // Sanitize reply content
+    dto.content = sanitizeHtml(dto.content, SANITIZE_OPTIONS);
 
     const reply = await this.prisma.forumReply.create({
       data: {
