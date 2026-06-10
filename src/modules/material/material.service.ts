@@ -78,7 +78,11 @@ export class MaterialService {
     }
 
     // ─── Upload ke Supabase Storage ──────────────────────────────────────────
-    const fileName = `${user.id}/${sessionId}/${Date.now()}-${file.originalname}`;
+    // Sanitize filename: strip path traversal, special chars
+    const safeName = file.originalname
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/\.{2,}/g, '.');
+    const fileName = `${user.id}/${sessionId}/${Date.now()}-${safeName}`;
     
     // Pastikan bucket materials ada di Supabase
     await this.ensureBucketExists('materials');
