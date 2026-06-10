@@ -11,6 +11,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class ClassService implements OnModuleInit {
@@ -89,7 +90,7 @@ export class ClassService implements OnModuleInit {
         day: dto.day,
         time: dto.time,
         room: dto.room,
-        password: dto.password || null,
+        password: dto.password ? await bcrypt.hash(dto.password, 10) : null,
         code,
         members: {
           create: { userId: ownerId, role: 'OWNER' },
@@ -181,7 +182,7 @@ export class ClassService implements OnModuleInit {
         ...(dto.day !== undefined && { day: dto.day }),
         ...(dto.time !== undefined && { time: dto.time }),
         ...(dto.room !== undefined && { room: dto.room }),
-        ...(dto.password !== undefined && { password: dto.password || null }),
+        ...(dto.password !== undefined && { password: dto.password ? await bcrypt.hash(dto.password, 10) : null }),
       },
     });
 
@@ -275,9 +276,12 @@ export class ClassService implements OnModuleInit {
       return { message: 'Anda sudah bergabung di kelas ini.', role: existingMember.role, classId };
     }
 
-    // Cek password jika ada
-    if (targetClass.password && targetClass.password !== password) {
-      throw new ForbiddenException('Password kelas salah.');
+    // Cek password jika ada (timing-safe comparison with bcrypt)
+    if (targetClass.password) {
+      const isMatch = password ? await bcrypt.compare(password, targetClass.password) : false;
+      if (!isMatch) {
+        throw new ForbiddenException('Password kelas salah.');
+      }
     }
 
     const isPending = targetClass.joinMode === 'APPROVAL';
