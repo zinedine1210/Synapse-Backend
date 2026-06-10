@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { SuperadminService } from './superadmin.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -11,6 +12,7 @@ import { UpdatePricingPlanDto } from './dto/update-pricing-plan.dto';
 @Controller('superadmin')
 @UseGuards(AuthGuard, RolesGuard)
 @Roles(Role.SUPERADMIN)
+@Throttle({ default: { ttl: 60000, limit: 30 } })
 export class SuperadminController {
   constructor(private readonly superadminService: SuperadminService) {}
 

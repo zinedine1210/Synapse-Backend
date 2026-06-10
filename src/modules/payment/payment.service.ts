@@ -72,7 +72,7 @@ export class PaymentService {
       },
     });
 
-    this.logger.log(`Snap token dibuat untuk user ${user.email}, orderId: ${orderId}`);
+    this.logger.log(`Snap token dibuat untuk user ${user.id}, orderId: ${orderId}`);
 
     return {
       snapToken: transaction.token,
