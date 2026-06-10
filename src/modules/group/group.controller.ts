@@ -3,6 +3,7 @@ import { GroupService } from './group.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
+import { CreateGroupDto, AutoGenerateGroupDto, AddMemberDto } from './dto/group.dto';
 
 @Controller('group')
 @UseGuards(AuthGuard)
@@ -18,7 +19,7 @@ export class GroupController {
   createGroup(
     @Param('classId', ParseUUIDPipe) classId: string,
     @GetUser() user: User,
-    @Body() body: { name: string },
+    @Body() body: CreateGroupDto,
   ) {
     return this.svc.createGroup(classId, user.id, body.name);
   }
@@ -27,7 +28,7 @@ export class GroupController {
   autoGenerate(
     @Param('classId', ParseUUIDPipe) classId: string,
     @GetUser() user: User,
-    @Body() body: { groupCount: number },
+    @Body() body: AutoGenerateGroupDto,
   ) {
     return this.svc.autoGenerate(classId, user.id, body.groupCount);
   }
@@ -41,7 +42,7 @@ export class GroupController {
   addMember(
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @GetUser() user: User,
-    @Body() body: { userId: string },
+    @Body() body: AddMemberDto,
   ) {
     return this.svc.addMember(groupId, body.userId, user.id);
   }

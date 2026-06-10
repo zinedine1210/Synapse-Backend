@@ -3,6 +3,7 @@ import { SessionService } from './session.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
+import { CreateSessionDto, UpdateSessionDto, ReorderSessionDto } from './dto/session.dto';
 
 @Controller('sessions')
 @UseGuards(AuthGuard)
@@ -20,7 +21,7 @@ export class SessionController {
   create(
     @Param('classId', ParseUUIDPipe) classId: string,
     @GetUser() user: User,
-    @Body() dto: { title?: string },
+    @Body() dto: CreateSessionDto,
   ) {
     return this.sessionService.createSession(classId, user.id, dto);
   }
@@ -30,7 +31,7 @@ export class SessionController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @GetUser() user: User,
-    @Body() dto: { title: string },
+    @Body() dto: UpdateSessionDto,
   ) {
     return this.sessionService.updateSession(id, user.id, dto);
   }
@@ -46,7 +47,7 @@ export class SessionController {
   reorder(
     @Param('id', ParseUUIDPipe) id: string,
     @GetUser() user: User,
-    @Body() dto: { newSequence: number },
+    @Body() dto: ReorderSessionDto,
   ) {
     return this.sessionService.reorderSession(id, user.id, dto);
   }

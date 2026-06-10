@@ -3,6 +3,7 @@ import { KolektifService } from './kolektif.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
+import { CreateKolektifDto, SetTargetDto, AddTransactionDto } from './dto/kolektif.dto';
 
 @Controller('kolektif')
 @UseGuards(AuthGuard)
@@ -18,7 +19,7 @@ export class KolektifController {
   create(
     @Param('classId', ParseUUIDPipe) classId: string,
     @GetUser() user: User,
-    @Body() body: { name: string; description?: string; targetAmount?: number; targetPerPerson?: number },
+    @Body() body: CreateKolektifDto,
   ) {
     return this.svc.create(classId, user.id, body);
   }
@@ -35,7 +36,7 @@ export class KolektifController {
   setTargetPerPerson(
     @Param('kolektifId', ParseUUIDPipe) kolektifId: string,
     @GetUser() user: User,
-    @Body() body: { targetPerPerson: number },
+    @Body() body: SetTargetDto,
   ) {
     return this.svc.setTargetPerPerson(kolektifId, user.id, body);
   }
@@ -44,7 +45,7 @@ export class KolektifController {
   addTransaction(
     @Param('kolektifId', ParseUUIDPipe) kolektifId: string,
     @GetUser() user: User,
-    @Body() body: { amount: number; type: 'IN' | 'OUT'; description?: string; targetUserId?: string },
+    @Body() body: AddTransactionDto,
   ) {
     return this.svc.addTransaction(kolektifId, user.id, body);
   }
