@@ -539,9 +539,10 @@ export class ClassService implements OnModuleInit {
       return { message: 'Anda sudah bergabung di kelas ini.', role: existingMember.role, classId: targetClass.id };
     }
 
-    // Check password if protected
+    // Check password if protected (timing-safe comparison with bcrypt)
     if (targetClass.password) {
-      if (!password || password.trim() !== targetClass.password) {
+      const isMatch = password ? await bcrypt.compare(password.trim(), targetClass.password) : false;
+      if (!isMatch) {
         throw new ForbiddenException('Password kelas salah.');
       }
     }
