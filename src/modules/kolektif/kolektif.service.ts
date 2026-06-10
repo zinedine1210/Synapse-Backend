@@ -61,7 +61,18 @@ export class KolektifService {
     if (!this.hasPermission(member, 'KAS_TRANSACTION')) throw new ForbiddenException('Anda tidak memiliki izin untuk mencatat transaksi.');
 
     let finalUserId = userId;
-    if (data.targetUserId) {
+    if (data.targetUserId && data.targetUserId !== userId) {
+      // Only users with KAS_TRANSACTION permission can set targetUserId for others
+      if (!this.hasPermission(member, 'KAS_TRANSACTION')) {
+        throw new ForbiddenException('Anda tidak memiliki izin untuk mencatat transaksi atas nama orang lain.');
+      }
+      // Verify target user is a member of the class
+      const targetMember = await this.prisma.classMember.findUnique({
+        where: { classId_userId: { classId: fund.classId, userId: data.targetUserId } },
+      });
+      if (!targetMember) {
+        throw new ForbiddenException('User target bukan anggota kelas ini.');
+      }
       finalUserId = data.targetUserId;
     }
 
