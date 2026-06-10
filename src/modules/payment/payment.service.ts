@@ -1,10 +1,11 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { User } from '@prisma/client';
 import * as MidtransClient from 'midtrans-client';
 import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class PaymentService {
@@ -86,6 +87,21 @@ export class PaymentService {
     const orderId = payload['order_id'] as string;
     const transactionStatus = payload['transaction_status'] as string;
     const fraudStatus = payload['fraud_status'] as string;
+    const signatureKey = payload['signature_key'] as string;
+    const statusCode = payload['status_code'] as string;
+    const grossAmount = payload['gross_amount'] as string;
+
+    // ─── Verify Midtrans signature ────────────────────────────────────────
+    const serverKey = this.configService.get<string>('MIDTRANS_SERVER_KEY')!;
+    const expectedSignature = crypto
+      .createHash('sha512')
+      .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
+      .digest('hex');
+
+    if (!signatureKey || signatureKey !== expectedSignature) {
+      this.logger.warn(`Invalid webhook signature for orderId=${orderId}`);
+      throw new ForbiddenException('Invalid webhook signature.');
+    }
 
     this.logger.log(`Webhook diterima: orderId=${orderId}, status=${transactionStatus}`);
 

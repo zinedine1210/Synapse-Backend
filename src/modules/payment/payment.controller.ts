@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { PaymentService } from './payment.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { AuthGuard } from '../../common/guards/auth.guard';
@@ -23,6 +24,7 @@ export class PaymentController {
    */
   @Post('create-snap-token')
   @UseGuards(AuthGuard)
+  @Throttle({ default: { ttl: 60000, limit: 3 } })
   createSnapToken(@GetUser() user: User, @Body() dto: CreatePaymentDto) {
     return this.paymentService.createSnapToken(user, dto);
   }
@@ -39,6 +41,7 @@ export class PaymentController {
    */
   @Post('verify')
   @UseGuards(AuthGuard)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   verifyPayment(@GetUser() user: User, @Body('orderId') orderId: string) {
     return this.paymentService.verifyPaymentStatus(orderId);
   }
