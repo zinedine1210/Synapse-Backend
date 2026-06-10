@@ -114,9 +114,13 @@ export class TaskService {
     // Upload task description image if provided
     if (data.imageBase64 && data.imageMimeType) {
       try {
-        const ext = data.imageMimeType.split('/')[1] || 'png';
+        const ext = (data.imageMimeType.split('/')[1] || 'png').replace(/[^a-zA-Z0-9]/g, '');
         const fileName = `tasks/${classId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const buffer = Buffer.from(data.imageBase64, 'base64');
+        // Limit image size to 5MB
+        if (buffer.byteLength > 5 * 1024 * 1024) {
+          this.logger.warn('Task image too large, skipping upload');
+        } else {
         const { error: uploadErr } = await this.supabase.storage.from('materials').upload(fileName, buffer, { contentType: data.imageMimeType });
         if (!uploadErr) {
           const { data: urlData } = this.supabase.storage.from('materials').getPublicUrl(fileName);
@@ -128,7 +132,7 @@ export class TaskService {
           try {
             const prompt = 'Kamu adalah asisten pendidikan. Analisis gambar soal/tugas berikut dan buat deskripsi ringkas dalam Bahasa Indonesia yang menjelaskan isi soal/tugas tersebut. Cukup deskripsi singkat saja (1-3 kalimat). Jangan jawab soalnya.';
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
-            const apiKey = process.env.GEMINI_API_KEY;
+            const apiKey = this.configService.get<string>('GEMINI_API_KEY');
             const resp = await fetch(url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-goog-api-key': apiKey! },
@@ -142,6 +146,7 @@ export class TaskService {
             }
           } catch (e) { this.logger.warn('AI description generation failed:', e); }
         }
+        } // close else for size check
       } catch (e) { this.logger.warn('Image upload failed:', e); }
     }
 
@@ -394,12 +399,41 @@ export class TaskService {
     return { message: 'Riwayat jawaban dihapus.' };
   }
 
-  /** AI: solve question from image URL */
+  /** AI: solve question from image URL (with SSRF protection) */
   private async solveFromImage(imageUrl: string, context: string): Promise<string> {
     this.logger.log('Solving task question from image URL via AI...');
+
+    // SSRF protection: only allow HTTPS URLs from known domains
     try {
-      const response = await fetch(imageUrl);
+      const url = new URL(imageUrl);
+      if (url.protocol !== 'https:') {
+        return 'URL gambar harus menggunakan HTTPS.';
+      }
+      // Block private/internal IPs
+      const hostname = url.hostname.toLowerCase();
+      if (
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.startsWith('192.168.') ||
+        hostname.startsWith('10.') ||
+        hostname.startsWith('172.') ||
+        hostname.endsWith('.internal') ||
+        hostname === '0.0.0.0' ||
+        hostname === '169.254.169.254' // AWS metadata
+      ) {
+        return 'URL gambar tidak valid.';
+      }
+    } catch {
+      return 'Format URL gambar tidak valid.';
+    }
+
+    try {
+      const response = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) });
       const buffer = await response.arrayBuffer();
+      // Limit response size to 10MB
+      if (buffer.byteLength > 10 * 1024 * 1024) {
+        return 'Gambar terlalu besar (maksimal 10MB).';
+      }
       const base64 = Buffer.from(buffer).toString('base64');
       const mimeType = response.headers.get('content-type') || 'image/jpeg';
       return this.solveFromBase64(base64, mimeType, context);
@@ -422,7 +456,7 @@ export class TaskService {
       prompt += 'Untuk setiap soal:\n- Jika pilihan ganda: tentukan jawaban yang benar beserta penjelasan lengkap\n- Jika essay: berikan jawaban lengkap dan terstruktur\n- Tulis jawaban secara rapi menggunakan heading dan bullet point\n\nFormat jawaban dalam Markdown yang rapi. Gunakan Bahasa Indonesia.';
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = this.configService.get<string>('GEMINI_API_KEY');
       const resp = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-goog-api-key': apiKey! },
