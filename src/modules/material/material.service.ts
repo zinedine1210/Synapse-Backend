@@ -58,6 +58,23 @@ export class MaterialService {
       );
     }
 
+    // Validate magic bytes to prevent MIME type spoofing
+    if (file.buffer && file.buffer.length >= 4) {
+      const head = file.buffer.slice(0, 4);
+      const hex = head.toString('hex');
+      const isValidMagic =
+        hex.startsWith('25504446') || // PDF (%PDF)
+        hex.startsWith('504b0304') || // DOCX/PPTX (ZIP-based)
+        hex.startsWith('ffd8ff') ||   // JPEG
+        hex.startsWith('89504e47') || // PNG
+        hex.startsWith('49443303') || // MP3 (ID3)
+        hex.startsWith('fff3') || hex.startsWith('fffb') || hex.startsWith('fff2') || // MP3 no ID3
+        hex.startsWith('00000020') || hex.startsWith('0000001c') || hex.startsWith('00000018'); // M4A/MP4
+      if (!isValidMagic) {
+        throw new BadRequestException('File content tidak sesuai dengan tipe yang diklaim.');
+      }
+    }
+
     // ─── Cek kuota upload user ───────────────────────────────────────────────
     const pricingPlan = await this.prisma.pricingPlan.findUnique({
       where: { name: user.plan },
