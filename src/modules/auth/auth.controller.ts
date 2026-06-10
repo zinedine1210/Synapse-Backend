@@ -27,6 +27,17 @@ export class AuthController {
   @Get('me')
   @UseGuards(AuthGuard)
   getMe(@GetUser() user: User) {
-    return user;
+    // Strip sensitive fields before returning
+    const { pricingPlan, ...safeUser } = user as any;
+    return {
+      ...safeUser,
+      pricingPlan: pricingPlan ? {
+        name: pricingPlan.name,
+        features: pricingPlan.features,
+        maxUploadPerMonth: pricingPlan.maxUploadPerMonth,
+        maxFileSizeMb: pricingPlan.maxFileSizeMb,
+        aiRequestLimit: pricingPlan.aiRequestLimit,
+      } : null,
+    };
   }
 }
