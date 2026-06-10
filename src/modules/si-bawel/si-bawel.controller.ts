@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Query, UseGuards } from '@nestjs/common';
 import { SiBawelService } from './si-bawel.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
@@ -12,6 +12,11 @@ import { UpdateBawelSettingDto } from './dto/update-setting.dto';
 @RequireFeature('si_bawel')
 export class SiBawelController {
   constructor(private readonly svc: SiBawelService) {}
+
+  @Get('comments')
+  getComments(@GetUser() user: User, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.svc.getComments(user.id, page ? parseInt(page) : 1, limit ? parseInt(limit) : 20);
+  }
 
   @Get('setting')
   getSetting(@GetUser() user: User) {

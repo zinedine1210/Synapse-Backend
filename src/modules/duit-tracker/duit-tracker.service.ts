@@ -1,9 +1,74 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { SetBudgetDto } from './dto/set-budget.dto';
 import { CreateTreeDto, TreeTransactionDto } from './dto/create-tree.dto';
+import { UpdateTreeDto } from './dto/update-tree.dto';
+
+// Rule-based keyword mapping untuk hemat token AI
+const EXPENSE_KEYWORDS: Record<string, string[]> = {
+  'makanan': ['makan', 'nasi', 'ayam', 'bakso', 'mie', 'sate', 'warteg', 'padang', 'lauk', 'lunch', 'dinner', 'breakfast', 'sarapan'],
+  'minuman': ['kopi', 'coffee', 'teh', 'boba', 'jus', 'minum', 'susu', 'starbucks', 'janji jiwa', 'kenu'],
+  'transportasi': ['ojol', 'grab', 'gojek', 'bensin', 'parkir', 'tol', 'bus', 'kereta', 'taxi', 'angkot', 'mrt', 'lrt', 'transport'],
+  'belanja': ['shopee', 'tokopedia', 'lazada', 'beli', 'belanja', 'toko', 'baju', 'celana', 'sepatu'],
+  'hiburan': ['nonton', 'game', 'spotify', 'netflix', 'youtube', 'bioskop', 'konser', 'main'],
+  'tagihan': ['listrik', 'wifi', 'internet', 'pulsa', 'pdam', 'air', 'token', 'bayar'],
+  'kesehatan': ['obat', 'dokter', 'apotek', 'rumah sakit', 'klinik', 'vitamin'],
+  'pendidikan': ['buku', 'fotokopi', 'print', 'alat tulis', 'kursus', 'les'],
+  'kos': ['kos', 'kontrakan', 'sewa', 'rent'],
+};
+
+const INCOME_KEYWORDS: Record<string, string[]> = {
+  'gaji': ['gaji', 'salary', 'upah'],
+  'freelance': ['freelance', 'project', 'proyek', 'kerja'],
+  'kiriman': ['transfer', 'kiriman', 'mama', 'papa', 'ortu', 'orang tua', 'dapat'],
+  'beasiswa': ['beasiswa', 'scholarship'],
+  'bonus': ['bonus', 'thr', 'insentif'],
+  'jualan': ['jualan', 'jual', 'laku'],
+};
+
+function parseAmountFromText(text: string): number | null {
+  const lower = text.toLowerCase().replace(/\./g, '').replace(/,/g, '');
+  // "25rb" / "25ribu" / "25k"
+  let match = lower.match(/(\d+)\s*(rb|ribu|k)\b/);
+  if (match) return parseInt(match[1]) * 1000;
+  // "2.5jt" / "2juta" / "2,5 juta"
+  match = lower.match(/([\d,\.]+)\s*(jt|juta|m)\b/);
+  if (match) return parseFloat(match[1].replace(',', '.')) * 1000000;
+  // plain number
+  match = lower.match(/(\d{4,})/);
+  if (match) return parseInt(match[1]);
+  // small numbers with context (e.g. "50" in "makan 50")
+  match = lower.match(/(\d{2,3})$/);
+  if (match) return parseInt(match[1]) * 1000;
+  return null;
+}
+
+function ruleBasedParse(text: string): { amount: number; type: string; category: string; label: string } | null {
+  const amount = parseAmountFromText(text);
+  if (!amount) return null;
+
+  const lower = text.toLowerCase();
+
+  // Check income keywords first
+  for (const [cat, keywords] of Object.entries(INCOME_KEYWORDS)) {
+    if (keywords.some(kw => lower.includes(kw))) {
+      return { amount, type: 'income', category: cat, label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text };
+    }
+  }
+
+  // Check expense keywords
+  for (const [cat, keywords] of Object.entries(EXPENSE_KEYWORDS)) {
+    if (keywords.some(kw => lower.includes(kw))) {
+      return { amount, type: 'expense', category: cat, label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text };
+    }
+  }
+
+  // Default: has amount but no keyword match
+  return { amount, type: 'expense', category: 'lainnya', label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text };
+}
 
 @Injectable()
 export class DuitTrackerService {
@@ -58,6 +123,19 @@ export class DuitTrackerService {
     const tx = await this.prisma.transaction.findFirst({ where: { id, userId } });
     if (!tx) throw new NotFoundException('Transaksi tidak ditemukan.');
     return this.prisma.transaction.delete({ where: { id } });
+  }
+
+  async updateTransaction(userId: string, id: string, dto: UpdateTransactionDto) {
+    const tx = await this.prisma.transaction.findFirst({ where: { id, userId } });
+    if (!tx) throw new NotFoundException('Transaksi tidak ditemukan.');
+    // Only allow editing within 24 hours
+    const hoursSinceCreation = (Date.now() - tx.createdAt.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceCreation > 24) throw new ForbiddenException('Transaksi hanya bisa diedit dalam 24 jam.');
+
+    const data: any = { ...dto };
+    if (dto.date) data.date = new Date(dto.date);
+
+    return this.prisma.transaction.update({ where: { id }, data });
   }
 
   async getSummary(userId: string, month: number, year: number) {
@@ -181,18 +259,45 @@ export class DuitTrackerService {
     return this.prisma.savingTree.delete({ where: { id: treeId } });
   }
 
+  async updateTree(userId: string, treeId: string, dto: UpdateTreeDto) {
+    const tree = await this.prisma.savingTree.findFirst({ where: { id: treeId, userId } });
+    if (!tree) throw new NotFoundException('Pohon tabungan tidak ditemukan.');
+
+    const data: any = {};
+    if (dto.name) data.name = dto.name;
+    if (dto.targetAmount) data.targetAmount = dto.targetAmount;
+    if (dto.treeType) data.treeType = dto.treeType;
+    if (dto.deadline !== undefined) data.deadline = dto.deadline ? new Date(dto.deadline) : null;
+
+    return this.prisma.savingTree.update({
+      where: { id: treeId },
+      data,
+      include: { transactions: { orderBy: { date: 'desc' }, take: 5 } },
+    });
+  }
+
   // ── AI: Parse natural language input ──
 
   async parseNaturalInput(userId: string, text: string) {
+    // Priority 1: Rule-based parsing (hemat token AI)
+    const ruleBased = ruleBasedParse(text);
+    if (ruleBased) {
+      return { ...ruleBased, parsedBy: 'rule' };
+    }
+
+    // Priority 2: AI parsing (jika rule tidak match)
     const prompt = `Kamu adalah asisten keuangan. Parse input berikut menjadi transaksi keuangan.
 Input: "${text}"
+
+Kategori expense: makanan, minuman, transportasi, belanja, hiburan, tagihan, kesehatan, pendidikan, kos, lainnya
+Kategori income: gaji, freelance, kiriman, beasiswa, bonus, jualan, lainnya
 
 Respond dalam JSON format:
 {
   "amount": number,
   "type": "income" | "expense",
-  "category": string (pilih dari: makanan, transportasi, belanja, hiburan, pendidikan, kesehatan, tagihan, gaji, uang_saku, lainnya),
-  "label": string (deskripsi singkat),
+  "category": string,
+  "label": string (deskripsi singkat Bahasa Indonesia),
   "note": string | null
 }
 
@@ -200,9 +305,10 @@ Hanya respond JSON, tanpa markdown.`;
 
     const result = await this.ai.generateText(prompt);
     try {
-      return JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+      const parsed = JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+      return { ...parsed, parsedBy: 'ai' };
     } catch {
-      return { raw: result };
+      return { raw: result, parsedBy: 'failed' };
     }
   }
 
@@ -214,20 +320,54 @@ Hanya respond JSON, tanpa markdown.`;
       if (setting && !setting.isEnabled) return;
 
       const level = setting?.level ?? 'NORMAL';
-      const prompt = `Kamu adalah "Si Bawel", asisten keuangan yang nyinyir tapi sayang.
-Level kecerewetan: ${level}
-- SANTAI: komentar ringan, jarang
-- NORMAL: komentar biasa
-- CEREWET: komentar sangat nyinyir dan detail
 
-User baru saja mencatat transaksi:
+      // SANTAI mode: skip komentar untuk transaksi < 100K
+      if (level === 'SANTAI' && dto.amount < 100000) return;
+
+      // Gather rich context
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const [categoryTxs, budgets, trees] = await Promise.all([
+        this.prisma.transaction.findMany({
+          where: { userId, category: dto.category, date: { gte: monthStart } },
+        }),
+        this.prisma.categoryBudget.findMany({
+          where: { userId, month: now.getMonth() + 1, year: now.getFullYear() },
+        }),
+        this.prisma.savingTree.findMany({ where: { userId }, take: 1, orderBy: { updatedAt: 'desc' } }),
+      ]);
+
+      const categoryTotal = categoryTxs.filter(t => t.type === dto.type).reduce((s, t) => s + t.amount, 0);
+      const categoryCount = categoryTxs.filter(t => t.type === dto.type).length;
+      const catBudget = budgets.find(b => b.category === dto.category);
+      const treeProgress = trees[0] ? Math.round((trees[0].currentAmount / trees[0].targetAmount) * 100) : null;
+
+      const prompt = `Kamu adalah "Si Bawel", teman keuangan yang jujur dan sedikit cerewet tapi peduli.
+Level kecerewetan: ${level}
+- SANTAI: komentar ringan
+- NORMAL: komentar biasa, kasih insight
+- CEREWET: komentar sangat nyinyir dan detail, cross-reference data lain
+
+Transaksi baru:
 - Tipe: ${dto.type}
 - Kategori: ${dto.category}
 - Jumlah: Rp ${dto.amount.toLocaleString('id-ID')}
 - Label: ${dto.label}
 
-Berikan komentar singkat (max 2 kalimat) tentang transaksi ini. Bahasa Indonesia, casual.
-Tentukan juga level komentar: "info", "warning", atau "praise".
+Konteks bulan ini:
+- Total pengeluaran kategori "${dto.category}": Rp ${categoryTotal.toLocaleString('id-ID')}
+- Frekuensi transaksi kategori ini: ${categoryCount}x
+${catBudget ? `- Budget kategori ini: Rp ${catBudget.amount.toLocaleString('id-ID')} (${Math.round((categoryTotal / catBudget.amount) * 100)}% terpakai)` : '- Budget kategori: belum diset'}
+${treeProgress !== null ? `- Progress pohon tabungan: ${treeProgress}%` : ''}
+
+Rules:
+- Jika income: apresiasi + saran sisihkan sebagian
+- Jika expense wajar: acknowledge + insight kecil
+- Jika expense berulang (>3x): singgung frekuensi dengan humor
+- Jika over budget: jujur tapi tidak menghakimi
+- Selalu sebut angka nyata, maksimal 2 kalimat
+- Bahasa Indonesia casual, boleh pakai "kamu"
+- Jangan pakai emoji lebih dari 1
 
 Format response (JSON only):
 { "comment": "...", "level": "info|warning|praise" }`;

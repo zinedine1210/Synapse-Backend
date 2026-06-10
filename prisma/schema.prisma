@@ -67,6 +67,15 @@ model User {
   taskSubmissions TaskSubmission[]
   taskGroupMembers TaskGroupMember[]
   forumReadStatuses ForumReadStatus[]
+  transactions   Transaction[]
+  categoryBudgets CategoryBudget[]
+  savingTrees    SavingTree[]
+  bawelSetting   BawelSetting?
+  personalTodos  PersonalTodo[]
+  qnaQuestions   QnaQuestion[]
+  qnaAnswers     QnaAnswer[]
+  reputation     UserReputation?
+  dailyBriefings DailyBriefing[]
 }
 
 model Class {
@@ -549,5 +558,187 @@ model ClassCustomTabFile {
   createdAt     DateTime @default(now())
 
   tab ClassCustomTab @relation(fields: [tabId], references: [id], onDelete: Cascade)
+}
+
+// ==============================
+// Phase 1 – Personal Features
+// ==============================
+
+model Transaction {
+  id              String   @id @default(uuid())
+  userId          String
+  amount          Float
+  type            String   // "income" | "expense"
+  category        String
+  subcategory     String?
+  label           String
+  note            String?
+  inputMethod     String   @default("text")
+  receiptImageUrl String?
+  bawelComment    String?
+  bawelLevel      String   @default("info")
+  linkedTreeId    String?
+  date            DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, date])
+  @@index([userId, type])
+  @@index([userId, category])
+}
+
+model CategoryBudget {
+  id        String   @id @default(uuid())
+  userId    String
+  category  String
+  amount    Float
+  month     Int
+  year      Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category, month, year])
+  @@index([userId, month, year])
+}
+
+model SavingTree {
+  id            String   @id @default(uuid())
+  userId        String
+  name          String
+  targetAmount  Float
+  currentAmount Float    @default(0)
+  deadline      DateTime?
+  treeType      String   @default("oak")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions TreeTransaction[]
+
+  @@index([userId])
+}
+
+model TreeTransaction {
+  id     String   @id @default(uuid())
+  treeId String
+  amount Float
+  type   String   // "deposit" | "withdrawal"
+  note   String?
+  date   DateTime @default(now())
+
+  tree SavingTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+
+  @@index([treeId])
+}
+
+model BawelSetting {
+  userId    String  @id
+  level     String  @default("NORMAL")
+  isEnabled Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PersonalTodo {
+  id          String    @id @default(uuid())
+  userId      String
+  title       String
+  description String?
+  dueDate     DateTime?
+  dueTime     String?
+  priority    String    @default("medium")
+  category    String?
+  status      String    @default("pending")
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminders TodoReminder[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, dueDate])
+}
+
+model TodoReminder {
+  id       String   @id @default(uuid())
+  todoId   String
+  remindAt DateTime
+  sent     Boolean  @default(false)
+
+  todo PersonalTodo @relation(fields: [todoId], references: [id], onDelete: Cascade)
+
+  @@index([todoId])
+  @@index([remindAt, sent])
+}
+
+model QnaQuestion {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String?
+  category  String[]
+  tags      String[]
+  slug      String   @unique
+  status    String   @default("open")
+  isPublic  Boolean  @default(true)
+  viewCount Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers QnaAnswer[]
+
+  @@index([userId])
+  @@index([slug])
+  @@index([status])
+}
+
+model QnaAnswer {
+  id                String   @id @default(uuid())
+  questionId        String
+  userId            String
+  body              String
+  isApprovedByAsker Boolean  @default(false)
+  isAIFiltered      Boolean  @default(false)
+  upvotes           Int      @default(0)
+  reportCount       Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  question QnaQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@index([userId])
+}
+
+model UserReputation {
+  id              String @id @default(uuid())
+  userId          String @unique
+  score           Int    @default(0)
+  answersApproved Int    @default(0)
+  questionsAsked  Int    @default(0)
+  reportCount     Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DailyBriefing {
+  id        String   @id @default(uuid())
+  userId    String
+  date      DateTime
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
 }
 

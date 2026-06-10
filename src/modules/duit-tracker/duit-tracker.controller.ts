@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Delete, Body, Param, Query,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, ParseUUIDPipe, ParseIntPipe,
 } from '@nestjs/common';
 import { DuitTrackerService } from './duit-tracker.service';
@@ -9,8 +9,10 @@ import { RequireFeature } from '../../common/decorators/require-feature.decorato
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
+import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { SetBudgetDto } from './dto/set-budget.dto';
 import { CreateTreeDto, TreeTransactionDto } from './dto/create-tree.dto';
+import { UpdateTreeDto } from './dto/update-tree.dto';
 
 @Controller('duit-tracker')
 @UseGuards(AuthGuard, FeatureGuard)
@@ -44,6 +46,11 @@ export class DuitTrackerController {
   @Delete('transactions/:id')
   deleteTransaction(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.deleteTransaction(user.id, id);
+  }
+
+  @Patch('transactions/:id')
+  updateTransaction(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTransactionDto) {
+    return this.svc.updateTransaction(user.id, id, dto);
   }
 
   @Get('summary')
@@ -95,6 +102,11 @@ export class DuitTrackerController {
   @Delete('trees/:treeId')
   deleteTree(@GetUser() user: User, @Param('treeId', ParseUUIDPipe) treeId: string) {
     return this.svc.deleteTree(user.id, treeId);
+  }
+
+  @Patch('trees/:treeId')
+  updateTree(@GetUser() user: User, @Param('treeId', ParseUUIDPipe) treeId: string, @Body() dto: UpdateTreeDto) {
+    return this.svc.updateTree(user.id, treeId, dto);
   }
 
   // ── AI Parse ──

@@ -20,8 +20,6 @@ export class TodoService {
         dueTime: dto.dueTime,
         priority: dto.priority ?? 'medium',
         category: dto.category,
-        tags: dto.tags ?? [],
-        inputMethod: dto.inputMethod ?? 'text',
       },
       include: { reminders: true },
     });

@@ -21,6 +21,24 @@ export class CreateQuestionDto {
   isPublic?: boolean;
 }
 
+export class UpdateQuestionDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  body?: string;
+
+  @IsOptional()
+  @IsArray()
+  category?: string[];
+
+  @IsOptional()
+  @IsArray()
+  tags?: string[];
+}
+
 export class CreateAnswerDto {
   @IsString()
   body: string;

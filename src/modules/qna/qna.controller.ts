@@ -8,7 +8,7 @@ import { FeatureGuard } from '../../common/guards/feature.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
-import { CreateQuestionDto, CreateAnswerDto } from './dto/qna.dto';
+import { CreateQuestionDto, CreateAnswerDto, UpdateQuestionDto } from './dto/qna.dto';
 
 @Controller('qna')
 @UseGuards(AuthGuard, FeatureGuard)
@@ -70,6 +70,16 @@ export class QnaController {
   @Delete('questions/:id')
   deleteQuestion(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.deleteQuestion(user.id, id);
+  }
+
+  @Patch('questions/:id')
+  editQuestion(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateQuestionDto) {
+    return this.svc.editQuestion(user.id, id, dto);
+  }
+
+  @Post('answers/:id/report')
+  reportAnswer(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.reportAnswer(user.id, id);
   }
 
   @Get('reputation')

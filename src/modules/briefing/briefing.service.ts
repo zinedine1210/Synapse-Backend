@@ -30,7 +30,7 @@ export class BriefingService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     // Gather data
-    const [todos, recentTx, upcomingDeadlines] = await Promise.all([
+    const [todos, recentTx, upcomingDeadlines, classMemberships, trees] = await Promise.all([
       this.prisma.personalTodo.findMany({
         where: { userId, status: 'pending' },
         orderBy: { dueDate: 'asc' },
@@ -48,6 +48,30 @@ export class BriefingService {
           dueDate: { gte: today, lte: new Date(today.getTime() + 3 * 86400000) },
         },
       }),
+      this.prisma.classMember.findMany({
+        where: { userId },
+        include: {
+          class: {
+            include: {
+              tasks: {
+                where: { deadline: { gte: today, lte: new Date(today.getTime() + 7 * 86400000) } },
+                orderBy: { deadline: 'asc' },
+                take: 5,
+              },
+              forumPosts: {
+                where: { createdAt: { gte: new Date(today.getTime() - 2 * 86400000) } },
+                orderBy: { createdAt: 'desc' },
+                take: 5,
+                include: { author: { select: { fullName: true } } },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.savingTree.findMany({
+        where: { userId },
+        take: 5,
+      }),
     ]);
 
     const weekIncome = recentTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
@@ -60,6 +84,31 @@ export class BriefingService {
     const deadlinesText = upcomingDeadlines.length > 0
       ? upcomingDeadlines.map(t => `- ${t.title} (${t.dueDate?.toLocaleDateString('id-ID')})`).join('\n')
       : 'Tidak ada deadline dekat.';
+
+    // Class tasks & forum
+    let classText = '';
+    for (const cm of classMemberships) {
+      const cls = cm.class;
+      const classTasks = cls.tasks;
+      const classForum = cls.forumPosts;
+      if (classTasks.length > 0 || classForum.length > 0) {
+        classText += `\n📚 Kelas: ${cls.name}\n`;
+        if (classTasks.length > 0) {
+          classText += 'Tugas:\n' + classTasks.map((t: any) => `- ${t.title} (deadline: ${t.deadline?.toLocaleDateString('id-ID')})`).join('\n') + '\n';
+        }
+        if (classForum.length > 0) {
+          classText += `Diskusi baru: ${classForum.length} post terbaru\n`;
+        }
+      }
+    }
+
+    // Saving trees
+    const treesText = trees.length > 0
+      ? trees.map(t => {
+          const pct = t.targetAmount > 0 ? Math.round((t.currentAmount / t.targetAmount) * 100) : 0;
+          return `- ${t.name}: Rp${t.currentAmount.toLocaleString('id-ID')} / Rp${t.targetAmount.toLocaleString('id-ID')} (${pct}%)`;
+        }).join('\n')
+      : '';
 
     const prompt = `Kamu adalah asisten pribadi yang ramah. Buat briefing harian singkat untuk mahasiswa.
 
@@ -75,13 +124,15 @@ ${deadlinesText}
 - Pemasukan: Rp${weekIncome.toLocaleString('id-ID')}
 - Pengeluaran: Rp${weekExpense.toLocaleString('id-ID')}
 - Saldo: Rp${(weekIncome - weekExpense).toLocaleString('id-ID')}
+${classText ? `\n📚 KELAS:\n${classText}` : ''}${treesText ? `\n🌳 Tabungan:\n${treesText}` : ''}
 
 Buat briefing harian yang:
 1. Sapa user (sesuaikan dengan waktu: pagi/siang/sore)
 2. Rangkum to-do yang harus dikerjakan hari ini
-3. Ingatkan deadline yang dekat
+3. Ingatkan deadline yang dekat (termasuk tugas kelas)
 4. Kasih insight singkat soal keuangan jika ada yang perlu diperhatikan
-5. Tutup dengan motivasi singkat
+5. Jika ada progress tabungan, kasih semangat
+6. Tutup dengan motivasi singkat
 
 Format: Markdown, bahasa Indonesia, casual tapi informatif. Max 300 kata.`;
 

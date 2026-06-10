@@ -33,7 +33,7 @@ export class AddTransactionDto {
   amount: number;
 
   @IsString()
-  type: string; // 'IN' | 'OUT' validated at service layer
+  type: 'IN' | 'OUT';
 
   @IsOptional()
   @IsString()
