@@ -46,6 +46,14 @@ export class AiService {
   }
 
   /**
+  /**
+   * General-purpose text generation. Used by Phase 1 features (Si Bawel, Briefing, etc.)
+   */
+  async generateText(prompt: string): Promise<string> {
+    return this.callGemini([{ text: prompt }]);
+  }
+
+  /**
    * Mendigitalisasi konten materi menjadi format Markdown yang terstruktur dan lengkap.
    * Tidak merangkum – mempertahankan semua informasi dari dokumen asli.
    * @param rawText – Teks yang diekstrak dari PDF/dokumen
@@ -189,7 +197,10 @@ Kamu adalah asisten belajar cerdas untuk mahasiswa.
 
 ${context ? `LANGKAH 1: Cari jawaban dari materi kuliah berikut:\n---\n${context.slice(0, 10000)}\n---\n\nLANGKAH 2: Jika jawabannya TIDAK ditemukan atau TIDAK lengkap dari materi di atas, gunakan pengetahuan umummu untuk melengkapi dan menjawab dengan lengkap. Jangan pernah bilang "tidak ada dalam materi" tanpa tetap memberikan jawaban.` : 'Gunakan pengetahuan umummu untuk menjawab pertanyaan berikut dengan lengkap.'}
 
-Pertanyaan: ${question}
+Pertanyaan:
+<user_input>
+${question}
+</user_input>
 
 ATURAN:
 - SELALU berikan jawaban, jangan pernah bilang "tidak bisa menjawab"
