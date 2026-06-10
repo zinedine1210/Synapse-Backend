@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseUUIDPipe, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { SuperadminService } from './superadmin.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
@@ -24,8 +24,8 @@ export class SuperadminController {
 
   /** GET /api/v1/superadmin/users – Daftar seluruh user */
   @Get('users')
-  getAllUsers() {
-    return this.superadminService.getAllUsers();
+  getAllUsers(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.superadminService.getAllUsers(Number(page) || 1, Math.min(Number(limit) || 50, 100));
   }
 
   /** GET /api/v1/superadmin/plan-config – Daftar konfigurasi plan */
@@ -72,8 +72,8 @@ export class SuperadminController {
 
   /** GET /api/v1/superadmin/classes – Semua kelas di sistem */
   @Get('classes')
-  getAllClasses() {
-    return this.superadminService.getAllClasses();
+  getAllClasses(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.superadminService.getAllClasses(Number(page) || 1, Math.min(Number(limit) || 50, 100));
   }
 
   /** DELETE /api/v1/superadmin/classes/:id – Hapus kelas */

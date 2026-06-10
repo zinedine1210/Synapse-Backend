@@ -42,20 +42,26 @@ export class SuperadminService {
     };
   }
 
-  async getAllUsers() {
-    return this.prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        role: true,
-        plan: true,
-        uploadCount: true,
-        createdAt: true,
-        _count: { select: { classes: true, payments: true } },
-      },
-    });
+  async getAllUsers(page = 1, limit = 50) {
+    const [data, total] = await Promise.all([
+      this.prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          role: true,
+          plan: true,
+          uploadCount: true,
+          createdAt: true,
+          _count: { select: { classes: true, payments: true } },
+        },
+      }),
+      this.prisma.user.count(),
+    ]);
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getPlanConfigs() {
@@ -97,24 +103,30 @@ export class SuperadminService {
     });
   }
 
-  async getAllClasses() {
-    return this.prisma.class.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        ownerId: true,
-        code: true,
-        createdAt: true,
-        _count: { select: { members: true, sessions: true, forumPosts: true, tasks: true } },
-        members: {
-          where: { role: 'OWNER' },
-          select: { user: { select: { fullName: true, email: true } } },
-          take: 1,
+  async getAllClasses(page = 1, limit = 50) {
+    const [data, total] = await Promise.all([
+      this.prisma.class.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          ownerId: true,
+          code: true,
+          createdAt: true,
+          _count: { select: { members: true, sessions: true, forumPosts: true, tasks: true } },
+          members: {
+            where: { role: 'OWNER' },
+            select: { user: { select: { fullName: true, email: true } } },
+            take: 1,
+          },
         },
-      },
-    });
+      }),
+      this.prisma.class.count(),
+    ]);
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async deleteClass(id: string) {
