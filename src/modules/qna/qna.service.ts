@@ -1,9 +1,12 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { CreateQuestionDto, CreateAnswerDto } from './dto/qna.dto';
+import { CreateQuestionDto, CreateAnswerDto, UpdateQuestionDto } from './dto/qna.dto';
 
 @Injectable()
 export class QnaService {
+  // Track upvotes per user to prevent spam (answerId:userId → true)
+  private readonly upvoteTracker = new Set<string>();
+
   constructor(private readonly prisma: PrismaService) {}
 
   private generateSlug(title: string): string {
@@ -157,6 +160,20 @@ export class QnaService {
   async upvoteAnswer(userId: string, answerId: string) {
     const answer = await this.prisma.qnaAnswer.findUnique({ where: { id: answerId } });
     if (!answer) throw new NotFoundException('Jawaban tidak ditemukan.');
+    if (answer.userId === userId) throw new ForbiddenException('Tidak bisa upvote jawaban sendiri.');
+
+    // Prevent duplicate upvotes per user
+    const key = `${answerId}:${userId}`;
+    if (this.upvoteTracker.has(key)) {
+      throw new ForbiddenException('Anda sudah pernah upvote jawaban ini.');
+    }
+
+    this.upvoteTracker.add(key);
+    // Prevent memory leak: cap at 50k entries
+    if (this.upvoteTracker.size > 50000) {
+      const entries = [...this.upvoteTracker];
+      entries.slice(0, 10000).forEach(e => this.upvoteTracker.delete(e));
+    }
 
     return this.prisma.qnaAnswer.update({
       where: { id: answerId },
@@ -173,5 +190,34 @@ export class QnaService {
   async getReputation(userId: string) {
     const rep = await this.prisma.userReputation.findUnique({ where: { userId } });
     return rep ?? { userId, score: 0, answersApproved: 0, questionsAsked: 0, reportCount: 0 };
+  }
+
+  async editQuestion(userId: string, questionId: string, dto: UpdateQuestionDto) {
+    const question = await this.prisma.qnaQuestion.findFirst({ where: { id: questionId, userId } });
+    if (!question) throw new NotFoundException('Pertanyaan tidak ditemukan atau bukan milik kamu.');
+
+    return this.prisma.qnaQuestion.update({
+      where: { id: questionId },
+      data: {
+        ...(dto.title && { title: dto.title }),
+        ...(dto.body !== undefined && { body: dto.body }),
+        ...(dto.category && { category: dto.category }),
+        ...(dto.tags && { tags: dto.tags }),
+      },
+      include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
+    });
+  }
+
+  async reportAnswer(userId: string, answerId: string) {
+    const answer = await this.prisma.qnaAnswer.findUnique({ where: { id: answerId } });
+    if (!answer) throw new NotFoundException('Jawaban tidak ditemukan.');
+    if (answer.userId === userId) throw new ForbiddenException('Tidak bisa melaporkan jawaban sendiri.');
+
+    await this.prisma.qnaAnswer.update({
+      where: { id: answerId },
+      data: { reportCount: { increment: 1 } },
+    });
+
+    return { message: 'Laporan berhasil dikirim.' };
   }
 }
