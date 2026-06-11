@@ -34,6 +34,16 @@ export class SplitBillController {
     return this.svc.getMyBills(user.id);
   }
 
+  @Post('detect-splittable')
+  detectSplittable(@GetUser() user: User) {
+    return this.svc.detectSplittable(user.id);
+  }
+
+  @Get('history-summary')
+  getHistorySummary(@GetUser() user: User) {
+    return this.svc.getHistorySummary(user.id);
+  }
+
   @Get(':id')
   getBill(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.getBillById(user.id, id);
@@ -48,9 +58,13 @@ export class SplitBillController {
     return this.svc.assignItemToParticipant(user.id, itemId, body.participantIds);
   }
 
-  @Patch('participants/:id/paid')
-  markPaid(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
-    return this.svc.markParticipantPaid(user.id, id);
+  @Patch(':id/participants/:pid/paid')
+  markPaid(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('pid', ParseUUIDPipe) pid: string,
+  ) {
+    return this.svc.markParticipantPaid(user.id, id, pid);
   }
 
   @Get(':id/wa-message/:participantId')

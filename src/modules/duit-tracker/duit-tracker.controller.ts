@@ -120,4 +120,11 @@ export class DuitTrackerController {
   scanReceipt(@GetUser() user: User, @Body() body: { base64: string; mimeType: string }) {
     return this.svc.scanReceipt(body.base64, body.mimeType);
   }
+
+  // ── Subscription Dismissal ──
+
+  @Post('dismiss-subscription')
+  dismissSubscription(@GetUser() user: User, @Body('pattern') pattern: string) {
+    return this.svc.dismissSubscription(user.id, pattern);
+  }
 }

@@ -43,3 +43,9 @@ export class CreateAnswerDto {
   @IsString()
   body: string;
 }
+
+export class ReportAnswerDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}

@@ -34,6 +34,27 @@ export class FoodRecommendService {
   }
 
   /**
+   * Get remaining food budget for the current month
+   */
+  async getRemainingFoodBudget(userId: string) {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const [foodBudgets, foodTx] = await Promise.all([
+      this.prisma.categoryBudget.findMany({
+        where: { userId, category: 'Makanan', month: now.getMonth() + 1, year: now.getFullYear() },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { userId, type: 'expense', category: 'Makanan', date: { gte: monthStart } },
+        _sum: { amount: true },
+      }),
+    ]);
+    const budget = foodBudgets[0]?.amount ?? 0;
+    const spent = foodTx._sum.amount ?? 0;
+    const remaining = budget > 0 ? budget - spent : null;
+    return { budget, spent, remaining };
+  }
+
+  /**
    * Mode A: Foto kulkas — extract bahan, generate resep
    */
   async recommendFromFridge(userId: string, imageBase64: string, mimeType: string) {
@@ -91,7 +112,24 @@ Response dalam JSON:
 
     try {
       const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      return JSON.parse(cleaned);
+      const parsed = JSON.parse(cleaned);
+
+      // Save recommendation history
+      if (parsed.recipes?.length) {
+        await Promise.all(
+          parsed.recipes.map((recipe: any) =>
+            this.prisma.foodRecommendationHistory.create({
+              data: {
+                userId,
+                recipeName: recipe.name,
+                budget: remaining,
+              },
+            }),
+          ),
+        );
+      }
+
+      return parsed;
     } catch {
       return { detectedIngredients: [], recipes: [], rawResponse: result };
     }
@@ -136,9 +174,58 @@ Response dalam JSON:
 
     try {
       const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      return JSON.parse(cleaned);
+      const parsed = JSON.parse(cleaned);
+
+      // Save recommendation history
+      if (parsed.recommendations?.length) {
+        await Promise.all(
+          parsed.recommendations.map((rec: any) =>
+            this.prisma.foodRecommendationHistory.create({
+              data: {
+                userId,
+                recipeName: rec.name,
+                budget: rec.price ?? null,
+              },
+            }),
+          ),
+        );
+      }
+
+      return parsed;
     } catch {
       return { menuItems: [], recommendations: [], rawResponse: result };
     }
+  }
+
+  // === Favorites ===
+
+  async getFavorites(userId: string) {
+    return this.prisma.foodFavorite.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async addFavorite(userId: string, recipeName: string, recipeData: string) {
+    return this.prisma.foodFavorite.create({
+      data: { userId, recipeName, recipeData },
+    });
+  }
+
+  async removeFavorite(userId: string, id: string) {
+    const fav = await this.prisma.foodFavorite.findFirst({ where: { id, userId } });
+    if (!fav) throw new NotFoundException('Favorite tidak ditemukan');
+    await this.prisma.foodFavorite.delete({ where: { id } });
+    return { success: true };
+  }
+
+  // === History ===
+
+  async getHistory(userId: string, limit = 20) {
+    return this.prisma.foodRecommendationHistory.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
   }
 }

@@ -13,4 +13,29 @@ export class DashboardController {
   getSummary(@GetUser() user: User) {
     return this.svc.getSummary(user);
   }
+
+  @Get('summary-v2')
+  getSummaryV2(@GetUser() user: User) {
+    return this.svc.getSummaryV2(user);
+  }
+
+  @Get('class-comparison')
+  getClassComparison(@GetUser() user: User) {
+    return this.svc.getClassComparison(user);
+  }
+
+  @Get('trending-qna')
+  getTrendingQna() {
+    return this.svc.getTrendingQna();
+  }
+
+  @Get('todays-briefing')
+  getTodaysBriefing(@GetUser() user: User) {
+    return this.svc.getTodaysBriefing(user);
+  }
+
+  @Get('ai-briefing')
+  getAiBriefing(@GetUser() user: User) {
+    return this.svc.getAiBriefing(user);
+  }
 }

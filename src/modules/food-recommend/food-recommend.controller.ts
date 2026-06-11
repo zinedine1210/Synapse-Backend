@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Query } from '@nestjs/common';
 import { FoodRecommendService } from './food-recommend.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
@@ -36,5 +36,33 @@ export class FoodRecommendController {
   @Post('from-menu')
   fromMenu(@GetUser() user: User, @Body() body: { imageBase64: string; mimeType: string; filter?: string }) {
     return this.svc.recommendFromMenu(user.id, body.imageBase64, body.mimeType, body.filter);
+  }
+
+  // === Budget Integration ===
+  @Get('remaining-budget')
+  getRemainingBudget(@GetUser() user: User) {
+    return this.svc.getRemainingFoodBudget(user.id);
+  }
+
+  // === Favorites ===
+  @Get('favorites')
+  getFavorites(@GetUser() user: User) {
+    return this.svc.getFavorites(user.id);
+  }
+
+  @Post('favorites')
+  addFavorite(@GetUser() user: User, @Body() body: { recipeName: string; recipeData: string }) {
+    return this.svc.addFavorite(user.id, body.recipeName, body.recipeData);
+  }
+
+  @Delete('favorites/:id')
+  removeFavorite(@GetUser() user: User, @Param('id') id: string) {
+    return this.svc.removeFavorite(user.id, id);
+  }
+
+  // === Recommendation History ===
+  @Get('history')
+  getHistory(@GetUser() user: User, @Query('limit') limit?: string) {
+    return this.svc.getHistory(user.id, limit ? parseInt(limit, 10) : 20);
   }
 }

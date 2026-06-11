@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { NotificationService } from '../notification/notification.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { SetBudgetDto } from './dto/set-budget.dto';
@@ -75,6 +76,7 @@ export class DuitTrackerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ── Transactions ──
@@ -98,6 +100,11 @@ export class DuitTrackerService {
 
     // Generate Si Bawel comment asynchronously
     this.generateBawelComment(userId, tx.id, dto).catch(() => {});
+
+    // Check budget alert for expense transactions
+    if (dto.type === 'expense') {
+      this.checkBudgetAlert(userId, dto.category, tx.date).catch(() => {});
+    }
 
     return tx;
   }
@@ -413,5 +420,70 @@ Catatan:
     } catch {
       return { error: 'Gagal memproses struk', rawResponse: result };
     }
+  }
+
+  // ── Budget Alert ──
+
+  /**
+   * Check if a category's spending has reached 80% of its budget.
+   * If so, trigger a notification via NotificationService.
+   */
+  private async checkBudgetAlert(userId: string, category: string, txDate: Date) {
+    const month = txDate.getMonth() + 1;
+    const year = txDate.getFullYear();
+
+    // Get the budget for this category
+    const budget = await this.prisma.categoryBudget.findUnique({
+      where: {
+        userId_category_month_year: { userId, category, month, year },
+      },
+    });
+
+    if (!budget) return; // No budget set for this category
+
+    // Calculate total spending in this category for the month
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+    const expenses = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        category,
+        type: 'expense',
+        date: { gte: monthStart, lte: monthEnd },
+      },
+    });
+
+    const totalSpent = expenses.reduce((sum, tx) => sum + tx.amount, 0);
+    const utilization = totalSpent / budget.amount;
+
+    // Trigger alert at 80% utilization
+    if (utilization >= 0.8) {
+      const percentage = Math.round(utilization * 100);
+      await this.notificationService.createNotification(
+        userId,
+        'Budget Alert ⚠️',
+        `Pengeluaran kategori "${category}" sudah ${percentage}% dari budget (Rp ${totalSpent.toLocaleString('id-ID')} / Rp ${budget.amount.toLocaleString('id-ID')}).`,
+        {
+          category: 'keuangan',
+          actionUrl: '/duit-tracker?tab=summary',
+        },
+      );
+    }
+  }
+
+  // ── Subscription Dismissal ──
+
+  /**
+   * Dismiss a detected subscription pattern so it won't be shown again.
+   */
+  async dismissSubscription(userId: string, pattern: string) {
+    return this.prisma.subscriptionDismissal.upsert({
+      where: {
+        userId_pattern: { userId, pattern },
+      },
+      update: {},
+      create: { userId, pattern },
+    });
   }
 }

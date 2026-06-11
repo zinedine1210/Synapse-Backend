@@ -7,6 +7,7 @@ const XP_REWARDS: Record<string, number> = {
   scan: 15,
   todo_complete: 5,
   todo_ontime: 10,
+  qna_question: 5,
   qna_answer: 10,
   qna_approved: 30,
   upload_material: 15,

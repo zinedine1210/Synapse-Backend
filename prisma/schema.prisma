@@ -38,88 +38,94 @@ enum Visibility {
   PRIVATE
 }
 
-
 // ==============================
 // Models
 // ==============================
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  fullName      String
-  avatarUrl     String?
-  role          Role           @default(USER)
-  plan          String         @default("FREE")
-  uploadCount   Int            @default(0)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  classes       ClassMember[]
-  payments      Payment[]
-  attempts      QuizAttempt[]
-  notifications Notification[]
-  pricingPlan   PricingPlan    @relation(fields: [plan], references: [name])
-  forumPosts    ForumPost[]
-  forumReplies  ForumReply[]
-  forumVotes    ForumVote[]
-  forumDiscussions ForumDiscussion[]
-  pollVotes     ForumPollVote[]
-  kolektifTx    KolektifTransaction[]
-  taskSubmissions TaskSubmission[]
-  taskGroupMembers TaskGroupMember[]
-  forumReadStatuses ForumReadStatus[]
-  transactions   Transaction[]
-  categoryBudgets CategoryBudget[]
-  savingTrees    SavingTree[]
-  bawelSetting   BawelSetting?
-  personalTodos  PersonalTodo[]
-  qnaQuestions   QnaQuestion[]
-  qnaAnswers     QnaAnswer[]
-  reputation     UserReputation?
-  dailyBriefings DailyBriefing[]
-  gamification   UserGamification?
-  xpTransactions XpTransaction[]
-  foodPreference FoodPreference?
-  splitBills     SplitBill[]
-  notificationPref NotificationPreference?
-  todoCategories TodoCategory[]
-  receiptScans   ReceiptScan[]
-  onboardingCompleted Boolean @default(false)
+  id                     String                      @id @default(uuid())
+  email                  String                      @unique
+  fullName               String
+  avatarUrl              String?
+  role                   Role                        @default(USER)
+  plan                   String                      @default("FREE")
+  uploadCount            Int                         @default(0)
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  classes                ClassMember[]
+  payments               Payment[]
+  attempts               QuizAttempt[]
+  notifications          Notification[]
+  pricingPlan            PricingPlan                 @relation(fields: [plan], references: [name])
+  forumPosts             ForumPost[]
+  forumReplies           ForumReply[]
+  forumVotes             ForumVote[]
+  forumDiscussions       ForumDiscussion[]
+  pollVotes              ForumPollVote[]
+  kolektifTx             KolektifTransaction[]
+  taskSubmissions        TaskSubmission[]
+  taskGroupMembers       TaskGroupMember[]
+  forumReadStatuses      ForumReadStatus[]
+  transactions           Transaction[]
+  categoryBudgets        CategoryBudget[]
+  savingTrees            SavingTree[]
+  bawelSetting           BawelSetting?
+  personalTodos          PersonalTodo[]
+  qnaQuestions           QnaQuestion[]
+  qnaAnswers             QnaAnswer[]
+  reputation             UserReputation?
+  dailyBriefings         DailyBriefing[]
+  gamification           UserGamification?
+  xpTransactions         XpTransaction[]
+  foodPreference         FoodPreference?
+  splitBills             SplitBill[]
+  notificationPref       NotificationPreference?
+  todoCategories         TodoCategory[]
+  receiptScans           ReceiptScan[]
+  onboardingCompleted    Boolean                     @default(false)
+  settings               UserSettings?
+  qnaVotes               QnaVote[]
+  qnaReports             QnaReport[]
+  subscriptionDismissals SubscriptionDismissal[]
+  weeklyProgress         WeeklyChallengeProgress[]
+  foodFavorites          FoodFavorite[]
+  foodHistory            FoodRecommendationHistory[]
 }
 
 model Class {
-  id          String           @id @default(uuid())
-  name        String
-  description String?
-  ownerId     String
-  lecturer    String?
-  day         String?
-  time        String?
-  room        String?
-  password    String?
+  id                String            @id @default(uuid())
+  name              String
+  description       String?
+  ownerId           String
+  lecturer          String?
+  day               String?
+  time              String?
+  room              String?
+  password          String?
   forumReadStatuses ForumReadStatus[]
-  code        String?          @unique
-  joinMode    String           @default("PUBLIC") // "PUBLIC" | "APPROVAL"
-  autoRoleAssign Boolean       @default(false) // auto-assign Admin role to new members
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  sessions        Session[]
-  members         ClassMember[]
-  roles           ClassRole[]
-  forumPosts      ForumPost[]
-  forumDiscussions ForumDiscussion[]
-  kolektif        Kolektif[]
-  tasks           Task[]
-  taskGroups      TaskGroup[]
-  examPredictions ExamPrediction[]
-  customTabs      ClassCustomTab[]
+  code              String?           @unique
+  joinMode          String            @default("PUBLIC") // "PUBLIC" | "APPROVAL"
+  autoRoleAssign    Boolean           @default(false) // auto-assign Admin role to new members
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  sessions          Session[]
+  members           ClassMember[]
+  roles             ClassRole[]
+  forumPosts        ForumPost[]
+  forumDiscussions  ForumDiscussion[]
+  kolektif          Kolektif[]
+  tasks             Task[]
+  taskGroups        TaskGroup[]
+  examPredictions   ExamPrediction[]
+  customTabs        ClassCustomTab[]
 }
 
 model ClassMember {
-  id        String  @id @default(uuid())
-  classId   String
-  userId    String
-  role      String  // "OWNER" | "MEMBER"
-  status    String  @default("ACTIVE") // "ACTIVE" | "PENDING"
+  id          String  @id @default(uuid())
+  classId     String
+  userId      String
+  role        String // "OWNER" | "MEMBER"
+  status      String  @default("ACTIVE") // "ACTIVE" | "PENDING"
   classRoleId String?
 
   class     Class      @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -132,7 +138,7 @@ model ClassMember {
 model ClassRole {
   id          String   @id @default(uuid())
   classId     String
-  name        String   // e.g. "Bendahara", "Sekretaris", "Koordinator"
+  name        String // e.g. "Bendahara", "Sekretaris", "Koordinator"
   permissions String[] // e.g. ["MANAGE_KAS", "EDIT_CLASS", "MANAGE_MEMBERS", ...]
   isDefault   Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -147,11 +153,11 @@ model Session {
   id        String   @id @default(uuid())
   classId   String
   title     String
-  sequence  Int      // 1-16
+  sequence  Int // 1-16
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  class       Class              @relation(fields: [classId], references: [id], onDelete: Cascade)
+  class       Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
   materials   Material[]
   quizzes     Quiz[]
   tasks       Task[]
@@ -161,19 +167,19 @@ model Session {
 }
 
 model Material {
-  id          String     @id @default(uuid())
-  sessionId   String
-  uploaderId  String?
-  fileName    String
-  fileUrl     String
-  fileType    String     // "PDF" | "AUDIO" | "IMAGE"
+  id            String     @id @default(uuid())
+  sessionId     String
+  uploaderId    String?
+  fileName      String
+  fileUrl       String
+  fileType      String // "PDF" | "AUDIO" | "IMAGE"
   fileSizeBytes Int?
-  aiSummary   String?    @db.Text
-  status      String     @default("PENDING")
-  errorMsg    String?
-  visibility  Visibility @default(SHARED)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  aiSummary     String?    @db.Text
+  status        String     @default("PENDING")
+  errorMsg      String?
+  visibility    Visibility @default(SHARED)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
@@ -212,7 +218,7 @@ model Payment {
   orderId           String   @unique // ID Transaksi Midtrans
   snapToken         String?
   grossAmount       Float
-  transactionStatus String   // "pending" | "settlement" | "expire" | "cancel"
+  transactionStatus String // "pending" | "settlement" | "expire" | "cancel"
   plan              String
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -226,6 +232,8 @@ model Notification {
   title     String
   message   String   @db.Text
   isRead    Boolean  @default(false)
+  category  String? // "kelas" | "keuangan" | "todo" | "achievement" | "qna"
+  actionUrl String? // deep link URL
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -260,19 +268,19 @@ model ForumDiscussion {
   authorId        String
   title           String
   description     String?  @db.Text
-  taskId          String?  // optional: linked task for context
-  sessionId       String?  // optional: linked session/pertemuan for context
+  taskId          String? // optional: linked task for context
+  sessionId       String? // optional: linked session/pertemuan for context
   assignType      String   @default("ALL") // ALL, INDIVIDUAL, GROUP
   assignedUserIds String[] // userId array when assignType = INDIVIDUAL
-  assignedGroupId String?  // TaskGroup ID when assignType = GROUP
+  assignedGroupId String? // TaskGroup ID when assignType = GROUP
   isDefault       Boolean  @default(false) // true for "Umum" discussion
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  class   Class      @relation(fields: [classId], references: [id], onDelete: Cascade)
-  author  User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  task    Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  session Session?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  class   Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  author  User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  task    Task?       @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  session Session?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   posts   ForumPost[]
 
   @@index([classId])
@@ -320,11 +328,11 @@ model ForumReply {
 }
 
 model ForumVote {
-  id       String  @id @default(uuid())
-  userId   String
-  postId   String?
-  replyId  String?
-  value    Int     // +1 or -1
+  id      String  @id @default(uuid())
+  userId  String
+  postId  String?
+  replyId String?
+  value   Int // +1 or -1
 
   user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   post  ForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
@@ -335,21 +343,21 @@ model ForumVote {
 }
 
 model ForumPoll {
-  id        String           @id @default(uuid())
-  postId    String           @unique
+  id        String   @id @default(uuid())
+  postId    String   @unique
   question  String
-  multiple  Boolean          @default(false) // allow multi-select
-  createdAt DateTime         @default(now())
+  multiple  Boolean  @default(false) // allow multi-select
+  createdAt DateTime @default(now())
 
-  post    ForumPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post    ForumPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
   options ForumPollOption[]
 }
 
 model ForumPollOption {
-  id     String          @id @default(uuid())
+  id     String @id @default(uuid())
   pollId String
   label  String
-  order  Int             @default(0)
+  order  Int    @default(0)
 
   poll  ForumPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
   votes ForumPollVote[]
@@ -367,15 +375,15 @@ model ForumPollVote {
 }
 
 model ForumAttachment {
-  id        String   @id @default(uuid())
-  postId    String?
-  replyId   String?
-  uploaderName String?
-  fileName  String
-  fileUrl   String
-  fileType  String   // "IMAGE" | "DOCUMENT" | "OTHER"
+  id            String   @id @default(uuid())
+  postId        String?
+  replyId       String?
+  uploaderName  String?
+  fileName      String
+  fileUrl       String
+  fileType      String // "IMAGE" | "DOCUMENT" | "OTHER"
   fileSizeBytes Int?
-  createdAt DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   post  ForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
   reply ForumReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
@@ -395,7 +403,7 @@ model ForumReadStatus {
   id           String   @id @default(uuid())
   userId       String
   classId      String
-  discussionId String?  // null = "Umum" discussion
+  discussionId String? // null = "Umum" discussion
   lastReadAt   DateTime @default(now())
 
   class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -411,10 +419,10 @@ model ForumReadStatus {
 model Kolektif {
   id              String   @id @default(uuid())
   classId         String
-  name            String   // e.g. "Kas Semester 5", "Patungan Modul"
+  name            String // e.g. "Kas Semester 5", "Patungan Modul"
   description     String?
   targetAmount    Float?
-  targetPerPerson Float?   // Target iuran per anggota
+  targetPerPerson Float? // Target iuran per anggota
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -427,7 +435,7 @@ model KolektifTransaction {
   kolektifId  String
   userId      String
   amount      Float
-  type        String   // "IN" | "OUT"
+  type        String // "IN" | "OUT"
   description String?
   createdAt   DateTime @default(now())
 
@@ -440,26 +448,26 @@ model KolektifTransaction {
 // ==============================
 
 model Task {
-  id              String     @id @default(uuid())
-  classId         String
-  sessionId       String?    // null = class-wide task
-  title           String
-  description     String?    @db.Text
+  id                  String     @id @default(uuid())
+  classId             String
+  sessionId           String? // null = class-wide task
+  title               String
+  description         String?    @db.Text
   descriptionImageUrl String? // uploaded photo of the task/soal
-  taskType        TaskType   @default(MIXED)
-  deadline        DateTime?
-  visibility      Visibility @default(SHARED)
-  assignType      String     @default("ALL") // "ALL" | "INDIVIDUAL" | "GROUP"
-  assignedUserIds String[]   // userId array when assignType = INDIVIDUAL
-  createdById     String
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  taskType            TaskType   @default(MIXED)
+  deadline            DateTime?
+  visibility          Visibility @default(SHARED)
+  assignType          String     @default("ALL") // "ALL" | "INDIVIDUAL" | "GROUP"
+  assignedUserIds     String[] // userId array when assignType = INDIVIDUAL
+  createdById         String
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
-  class       Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
-  session     Session?         @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  class       Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
+  session     Session?          @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   submissions TaskSubmission[]
   discussions ForumDiscussion[]
-  taskGroup   TaskGroup?       @relation(fields: [taskGroupId], references: [id])
+  taskGroup   TaskGroup?        @relation(fields: [taskGroupId], references: [id])
   taskGroupId String?
 
   @@index([classId])
@@ -468,15 +476,15 @@ model Task {
 }
 
 model TaskSubmission {
-  id          String   @id @default(uuid())
-  taskId      String
-  userId      String
-  content     String?  @db.Text  // manual text input
-  imageUrl    String?            // uploaded image of question
-  aiAnswer    String?  @db.Text  // AI generated answer
-  visibility  String   @default("PRIVATE") // PRIVATE | PUBLIC
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  taskId     String
+  userId     String
+  content    String?  @db.Text // manual text input
+  imageUrl   String? // uploaded image of question
+  aiAnswer   String?  @db.Text // AI generated answer
+  visibility String   @default("PRIVATE") // PRIVATE | PUBLIC
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -488,7 +496,7 @@ model TaskSubmission {
 model TaskGroup {
   id        String   @id @default(uuid())
   classId   String
-  name      String   // e.g. "Kelompok 1"
+  name      String // e.g. "Kelompok 1"
   createdAt DateTime @default(now())
 
   class   Class             @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -497,9 +505,9 @@ model TaskGroup {
 }
 
 model TaskGroupMember {
-  id        String @id @default(uuid())
-  groupId   String
-  userId    String
+  id      String @id @default(uuid())
+  groupId String
+  userId  String
 
   group TaskGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -514,11 +522,11 @@ model TaskGroupMember {
 model ExamPrediction {
   id          String   @id @default(uuid())
   classId     String
-  title       String   // "UTS Genap 2025", "UAS Semester 5"
+  title       String // "UTS Genap 2025", "UAS Semester 5"
   description String?  @db.Text
   createdById String
   sessionIds  String[] // Pertemuan mana saja yang masuk ujian
-  source      String   // "AI_GENERATED" | "UPLOADED" | "KISI_KISI" | "MANUAL"
+  source      String // "AI_GENERATED" | "UPLOADED" | "KISI_KISI" | "MANUAL"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -531,7 +539,7 @@ model ExamPrediction {
 model ExamPredictionQuestion {
   id           String   @id @default(uuid())
   predictionId String
-  type         String   // "ESSAY" | "MULTIPLE_CHOICE"
+  type         String // "ESSAY" | "MULTIPLE_CHOICE"
   question     String   @db.Text
   options      String?  @db.Text // JSON array for multiple choice
   answerKey    String?  @db.Text
@@ -545,13 +553,13 @@ model ExamPredictionQuestion {
 model ClassCustomTab {
   id           String   @id @default(uuid())
   classId      String
-  discussionId String?  // null = "Umum" discussion
+  discussionId String? // null = "Umum" discussion
   name         String
   content      String   @default("") @db.Text
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  class Class              @relation(fields: [classId], references: [id], onDelete: Cascade)
+  class Class                @relation(fields: [classId], references: [id], onDelete: Cascade)
   files ClassCustomTabFile[]
 }
 
@@ -560,7 +568,7 @@ model ClassCustomTabFile {
   tabId         String
   fileName      String
   fileUrl       String
-  fileType      String   // "IMAGE" | "DOCUMENT" | "OTHER"
+  fileType      String // "IMAGE" | "DOCUMENT" | "OTHER"
   fileSizeBytes Int?
   uploadedById  String?
   createdAt     DateTime @default(now())
@@ -576,7 +584,7 @@ model Transaction {
   id              String   @id @default(uuid())
   userId          String
   amount          Float
-  type            String   // "income" | "expense"
+  type            String // "income" | "expense"
   category        String
   subcategory     String?
   label           String
@@ -614,15 +622,15 @@ model CategoryBudget {
 }
 
 model SavingTree {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   userId        String
   name          String
   targetAmount  Float
-  currentAmount Float    @default(0)
+  currentAmount Float     @default(0)
   deadline      DateTime?
-  treeType      String   @default("oak")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  treeType      String    @default("oak")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions TreeTransaction[]
@@ -634,7 +642,7 @@ model TreeTransaction {
   id     String   @id @default(uuid())
   treeId String
   amount Float
-  type   String   // "deposit" | "withdrawal"
+  type   String // "deposit" | "withdrawal"
   note   String?
   date   DateTime @default(now())
 
@@ -652,21 +660,25 @@ model BawelSetting {
 }
 
 model PersonalTodo {
-  id          String    @id @default(uuid())
-  userId      String
-  title       String
-  description String?
-  dueDate     DateTime?
-  dueTime     String?
-  priority    String    @default("medium")
-  category    String?
-  status      String    @default("pending")
-  completedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String    @id @default(uuid())
+  userId       String
+  title        String
+  description  String?
+  dueDate      DateTime?
+  dueTime      String?
+  priority     String    @default("medium")
+  category     String?
+  status       String    @default("pending")
+  completedAt  DateTime?
+  sortOrder    Int       @default(0)
+  recurrence   String? // "daily" | "weekly" | "monthly"
+  parentTodoId String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   reminders TodoReminder[]
+  subtasks  TodoSubtask[]
 
   @@index([userId])
   @@index([userId, status])
@@ -721,6 +733,8 @@ model QnaAnswer {
 
   question QnaQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
   user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  votes    QnaVote[]
+  reports  QnaReport[]
 
   @@index([questionId])
   @@index([userId])
@@ -755,16 +769,16 @@ model DailyBriefing {
 // ==============================
 
 model UserGamification {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  totalXp        Int      @default(0)
-  level          Int      @default(1)
-  currentStreak  Int      @default(0)
-  longestStreak  Int      @default(0)
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  totalXp        Int       @default(0)
+  level          Int       @default(1)
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
   lastActiveDate DateTime?
   achievements   String[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -809,10 +823,11 @@ model SplitBill {
   totalAmount     Float
   receiptImageUrl String?
   status          String   @default("settling")
+  splitMethod     String   @default("item") // "item" | "percentage"
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   items        SplitBillItem[]
   participants SplitParticipant[]
 
@@ -833,11 +848,12 @@ model SplitBillItem {
 }
 
 model SplitParticipant {
-  id        String  @id @default(uuid())
-  billId    String
-  name      String
-  totalOwed Float   @default(0)
-  isPaid    Boolean @default(false)
+  id         String  @id @default(uuid())
+  billId     String
+  name       String
+  totalOwed  Float   @default(0)
+  isPaid     Boolean @default(false)
+  percentage Float? // used when splitMethod = "percentage"
 
   bill SplitBill @relation(fields: [billId], references: [id], onDelete: Cascade)
 
@@ -855,6 +871,9 @@ model NotificationPreference {
   streakReminder   Boolean @default(true)
   idleReminder     Boolean @default(true)
   weeklyRecap      Boolean @default(true)
+  forumReply       Boolean @default(true)
+  qnaAnswer        Boolean @default(true)
+  achievementAlert Boolean @default(true)
   quietHoursStart  String?
   quietHoursEnd    String?
 
@@ -886,19 +905,165 @@ model TodoCategory {
 // ==============================
 
 model ReceiptScan {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String
   imageUrl    String
   storeName   String?
   scanDate    DateTime?
   totalAmount Float?
-  itemCount   Int      @default(0)
-  status      String   @default("processed")
-  rawResponse String?  @db.Text
-  createdAt   DateTime @default(now())
+  itemCount   Int       @default(0)
+  status      String    @default("processed")
+  rawResponse String?   @db.Text
+  createdAt   DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
+// ==============================
+// Q&A Upvote Persistence (replaces in-memory Set)
+// ==============================
+
+model QnaVote {
+  id        String   @id @default(uuid())
+  userId    String
+  answerId  String
+  value     Int      @default(1) // +1 upvote
+  createdAt DateTime @default(now())
+
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answer QnaAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, answerId])
+  @@index([answerId])
+}
+
+// ==============================
+// User Settings / Preferences
+// ==============================
+
+model UserSettings {
+  userId          String    @id
+  theme           String    @default("system") // "light" | "dark" | "system"
+  language        String    @default("id") // "id" | "en"
+  exportRequested DateTime?
+  accountStatus   String    @default("ACTIVE") // "ACTIVE" | "DELETED"
+  deletedAt       DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==============================
+// Todo Sub-tasks
+// ==============================
+
+model TodoSubtask {
+  id        String   @id @default(uuid())
+  todoId    String
+  title     String
+  isDone    Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  todo PersonalTodo @relation(fields: [todoId], references: [id], onDelete: Cascade)
+
+  @@index([todoId])
+}
+
+// ==============================
+// Subscription Dismissal (for "Bocor Halus")
+// ==============================
+
+model SubscriptionDismissal {
+  id        String   @id @default(uuid())
+  userId    String
+  pattern   String // serialized pattern key (e.g., "spotify_monthly")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pattern])
+  @@index([userId])
+}
+
+// ==============================
+// Q&A Answer Reports
+// ==============================
+
+model QnaReport {
+  id        String   @id @default(uuid())
+  userId    String
+  answerId  String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answer QnaAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, answerId])
+}
+
+// ==============================
+// Weekly Challenge (Gamification)
+// ==============================
+
+model WeeklyChallenge {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  targetType  String // "transactions_count" | "savings_amount" | "todos_done" | "answers_given"
+  targetValue Int
+  rewardXp    Int
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  progress WeeklyChallengeProgress[]
+}
+
+model WeeklyChallengeProgress {
+  id          String  @id @default(uuid())
+  challengeId String
+  userId      String
+  current     Int     @default(0)
+  completed   Boolean @default(false)
+
+  challenge WeeklyChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
+}
+
+// ==============================
+// Food Favorites
+// ==============================
+
+model FoodFavorite {
+  id         String   @id @default(uuid())
+  userId     String
+  recipeName String
+  recipeData String   @db.Text // JSON serialized recipe
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ==============================
+// Food Recommendation History
+// ==============================
+
+model FoodRecommendationHistory {
+  id         String   @id @default(uuid())
+  userId     String
+  recipeName String
+  budget     Float?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}

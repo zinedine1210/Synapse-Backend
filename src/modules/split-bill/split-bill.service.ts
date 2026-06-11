@@ -1,12 +1,14 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { SplitBillGateway } from './split-bill.gateway';
 
 @Injectable()
 export class SplitBillService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly splitBillGateway: SplitBillGateway,
   ) {}
 
   async scanReceipt(imageBase64: string, mimeType: string) {
@@ -149,7 +151,7 @@ Catatan:
     }
   }
 
-  async markParticipantPaid(userId: string, participantId: string) {
+  async markParticipantPaid(userId: string, billId: string, participantId: string) {
     const participant = await this.prisma.splitParticipant.findUnique({
       where: { id: participantId },
       include: { bill: true },
@@ -157,6 +159,7 @@ Catatan:
 
     if (!participant) throw new NotFoundException('Peserta tidak ditemukan.');
     if (participant.bill.userId !== userId) throw new ForbiddenException('Akses ditolak.');
+    if (participant.billId !== billId) throw new NotFoundException('Peserta tidak ditemukan di bill ini.');
 
     await this.prisma.splitParticipant.update({
       where: { id: participantId },
@@ -175,7 +178,16 @@ Catatan:
       });
     }
 
-    return this.getBillById(userId, participant.billId);
+    const updatedBill = await this.getBillById(userId, participant.billId);
+
+    // Broadcast via Socket.IO
+    this.splitBillGateway.emitPaymentUpdated(participant.billId, {
+      participantId,
+      isPaid: true,
+      bill: updatedBill,
+    });
+
+    return updatedBill;
   }
 
   async generateWhatsAppMessage(userId: string, billId: string, participantId: string) {
@@ -206,5 +218,75 @@ Catatan:
 
     await this.prisma.splitBill.delete({ where: { id: billId } });
     return { message: 'Bill dihapus.' };
+  }
+
+  /**
+   * Detect potential split-worthy transactions from recent expenses.
+   * Criteria: amount > 100k AND category in (makanan, hiburan, minuman).
+   * These are likely group expenses (restaurant, entertainment).
+   */
+  async detectSplittable(userId: string) {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const splittableCategories = ['makanan', 'minuman', 'hiburan'];
+    const amountThreshold = 100000;
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        type: 'expense',
+        amount: { gte: amountThreshold },
+        category: { in: splittableCategories },
+        date: { gte: thirtyDaysAgo },
+      },
+      orderBy: { date: 'desc' },
+      take: 20,
+    });
+
+    return transactions.map(tx => ({
+      id: tx.id,
+      label: tx.label,
+      amount: tx.amount,
+      category: tx.category,
+      date: tx.date,
+      suggestedReason: tx.amount >= 200000
+        ? 'Nominal besar, kemungkinan makan bersama'
+        : 'Kategori yang sering dibagi',
+    }));
+  }
+
+  /**
+   * Get cumulative debt/credit summary across all bills for the user.
+   * Aggregates all SplitParticipant records across all user's bills
+   * and computes net debt/credit per friend (participant name).
+   */
+  async getHistorySummary(userId: string) {
+    const bills = await this.prisma.splitBill.findMany({
+      where: { userId },
+      include: { participants: true },
+    });
+
+    // Aggregate totals per participant name
+    const summary: Record<string, { totalOwed: number; totalPaid: number }> = {};
+
+    for (const bill of bills) {
+      for (const participant of bill.participants) {
+        if (!summary[participant.name]) {
+          summary[participant.name] = { totalOwed: 0, totalPaid: 0 };
+        }
+        summary[participant.name].totalOwed += participant.totalOwed;
+        if (participant.isPaid) {
+          summary[participant.name].totalPaid += participant.totalOwed;
+        }
+      }
+    }
+
+    return Object.entries(summary).map(([name, data]) => ({
+      name,
+      totalOwed: data.totalOwed,
+      totalPaid: data.totalPaid,
+      outstanding: data.totalOwed - data.totalPaid,
+    }));
   }
 }
