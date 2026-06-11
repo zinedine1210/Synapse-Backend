@@ -13,65 +13,68 @@ async function main() {
   console.log('🌱 Seeding database Synapse...');
 
   // ─── 1. Konfigurasi Kuota Plan ───────────────────────────────────────────
+  const FREE_FEATURES = [
+    // Akademik & Kelas (basic)
+    'class', 'class_sessions', 'forum', 'forum_discussion', 'task', 'unread_tracking',
+    // AI & Dokumen (basic)
+    'pdf_export',
+    // Keuangan (basic)
+    'duit_tracker',
+    // Produktivitas (basic)
+    'todo_list', 'todo_categories', 'qna_public',
+    // Gamifikasi & UX (basic)
+    'gamification', 'notification', 'quick_action',
+  ];
+
+  const PRO_FEATURES = [
+    // Akademik & Kelas (full)
+    'class', 'class_settings', 'class_sessions', 'class_custom_tabs',
+    'forum', 'forum_announcement', 'forum_poll', 'forum_reminder', 'forum_file_upload', 'forum_discussion',
+    'quiz', 'task', 'task_ai_solver', 'task_image_ocr',
+    'kolektif', 'group',
+    'exam_prediction', 'exam_manual', 'exam_kisi_kisi',
+    'canvas', 'unread_tracking',
+    // AI & Dokumen (full)
+    'ai_digitalization', 'schedule_parser', 'pdf_export', 'ai_insight', 'daily_briefing', 'ai_briefing_tips',
+    // Keuangan (full)
+    'duit_tracker', 'duit_tracker_budget', 'duit_tracker_saving_tree', 'duit_tracker_summary', 'duit_tracker_quick_input',
+    'si_bawel', 'split_bill', 'receipt_scanner',
+    // Produktivitas (full)
+    'todo_list', 'todo_calendar', 'todo_timeline', 'todo_categories', 'todo_subtasks', 'todo_recurring',
+    'qna_public', 'qna_voting', 'qna_ai_answer',
+    'food_recommend',
+    // Gamifikasi & UX (full)
+    'gamification', 'gamification_streak', 'gamification_leaderboard',
+    'notification', 'command_palette', 'quick_action',
+    // Profil & Personalisasi
+    'profile_ai_context', 'profile_avatar',
+    'dashboard_class_comparison', 'dashboard_trending_qna',
+  ];
+
   await prisma.pricingPlan.upsert({
     where: { name: 'FREE' },
-    update: {
-      features: [
-        // Akademik & Kelas
-        'class', 'forum', 'task', 'unread_tracking',
-        // AI & Dokumen
-        'pdf_export',
-        // Produktivitas
-        'todo_list', 'qna_public',
-        // Gamifikasi & UX
-        'notification', 'quick_action',
-      ],
-    },
+    update: { features: FREE_FEATURES },
     create: {
       name: 'FREE',
       description: 'Paket gratis untuk mencoba asisten AI kuliah',
       maxUploadPerMonth: 5,
       maxFileSizeMb: 10,
       aiRequestLimit: 10,
-      features: [
-        'class', 'forum', 'task', 'unread_tracking',
-        'pdf_export',
-        'todo_list', 'qna_public',
-        'notification', 'quick_action',
-      ],
+      features: FREE_FEATURES,
       price: 0,
     },
   });
 
   await prisma.pricingPlan.upsert({
     where: { name: 'PRO' },
-    update: {
-      features: [
-        // Akademik & Kelas
-        'class', 'forum', 'quiz', 'task', 'kolektif', 'group', 'exam_prediction', 'canvas', 'unread_tracking',
-        // AI & Dokumen
-        'ai_digitalization', 'schedule_parser', 'pdf_export', 'ai_insight', 'daily_briefing',
-        // Keuangan
-        'duit_tracker', 'si_bawel', 'split_bill', 'receipt_scanner',
-        // Produktivitas
-        'todo_list', 'qna_public', 'food_recommend',
-        // Gamifikasi & UX
-        'gamification', 'notification', 'command_palette', 'quick_action',
-      ],
-    },
+    update: { features: PRO_FEATURES },
     create: {
       name: 'PRO',
       description: 'Paket lengkap untuk produktivitas belajar maksimal',
       maxUploadPerMonth: 50,
       maxFileSizeMb: 25,
       aiRequestLimit: 200,
-      features: [
-        'class', 'forum', 'quiz', 'task', 'kolektif', 'group', 'exam_prediction', 'canvas', 'unread_tracking',
-        'ai_digitalization', 'schedule_parser', 'pdf_export', 'ai_insight', 'daily_briefing',
-        'duit_tracker', 'si_bawel', 'split_bill', 'receipt_scanner',
-        'todo_list', 'qna_public', 'food_recommend',
-        'gamification', 'notification', 'command_palette', 'quick_action',
-      ],
+      features: PRO_FEATURES,
       price: 49000,
     },
   });
