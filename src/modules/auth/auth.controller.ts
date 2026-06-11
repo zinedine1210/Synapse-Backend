@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SyncUserDto } from './dto/sync-user.dto';
 import { GetUser } from '../../common/decorators/get-user.decorator';
@@ -39,5 +39,15 @@ export class AuthController {
         aiRequestLimit: pricingPlan.aiRequestLimit,
       } : null,
     };
+  }
+
+  /**
+   * PATCH /api/v1/auth/onboarding-complete
+   * Mark onboarding as completed for the current user.
+   */
+  @Patch('complete-onboarding')
+  @UseGuards(AuthGuard)
+  completeOnboarding(@GetUser() user: User) {
+    return this.authService.completeOnboarding(user.id);
   }
 }

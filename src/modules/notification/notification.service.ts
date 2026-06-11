@@ -60,4 +60,30 @@ export class NotificationService {
       await this.createNotification(uid, title, message);
     }
   }
+
+  /** Get notification preferences */
+  async getPreferences(userId: string) {
+    let pref = await this.prisma.notificationPreference.findUnique({ where: { userId } });
+    if (!pref) {
+      pref = await this.prisma.notificationPreference.create({ data: { userId } });
+    }
+    return pref;
+  }
+
+  /** Update notification preferences */
+  async updatePreferences(userId: string, data: Partial<{
+    deadlineReminder: boolean;
+    budgetAlert: boolean;
+    streakReminder: boolean;
+    idleReminder: boolean;
+    weeklyRecap: boolean;
+    quietHoursStart: string;
+    quietHoursEnd: string;
+  }>) {
+    return this.prisma.notificationPreference.upsert({
+      where: { userId },
+      update: data,
+      create: { userId, ...data },
+    });
+  }
 }

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -22,6 +23,11 @@ import { SiBawelModule } from './modules/si-bawel/si-bawel.module';
 import { TodoModule } from './modules/todo/todo.module';
 import { QnaModule } from './modules/qna/qna.module';
 import { BriefingModule } from './modules/briefing/briefing.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { GamificationModule } from './modules/gamification/gamification.module';
+import { FoodRecommendModule } from './modules/food-recommend/food-recommend.module';
+import { SplitBillModule } from './modules/split-bill/split-bill.module';
+import { InsightModule } from './modules/insight/insight.module';
 import { validateEnv } from './config/env.validation';
 
 @Module({
@@ -32,6 +38,9 @@ import { validateEnv } from './config/env.validation';
       envFilePath: '.env',
       validate: validateEnv, // Server crash jika .env tidak lengkap
     }),
+
+    // ─── Scheduling (Cron Jobs) ─────────────────────────────────────────────
+    ScheduleModule.forRoot(),
 
     // ─── Rate Limiting (Proteksi API AI) ─────────────────────────────────────
     ThrottlerModule.forRoot([
@@ -62,6 +71,11 @@ import { validateEnv } from './config/env.validation';
     TodoModule,
     QnaModule,
     BriefingModule,
+    DashboardModule,
+    GamificationModule,
+    FoodRecommendModule,
+    SplitBillModule,
+    InsightModule,
   ],
   providers: [
     // ─── Global Rate Limit Guard ──────────────────────────────────────────────

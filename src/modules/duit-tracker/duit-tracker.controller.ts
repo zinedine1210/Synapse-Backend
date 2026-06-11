@@ -115,4 +115,9 @@ export class DuitTrackerController {
   parseNaturalInput(@GetUser() user: User, @Body('text') text: string) {
     return this.svc.parseNaturalInput(user.id, text);
   }
+
+  @Post('scan-receipt')
+  scanReceipt(@GetUser() user: User, @Body() body: { base64: string; mimeType: string }) {
+    return this.svc.scanReceipt(body.base64, body.mimeType);
+  }
 }

@@ -383,4 +383,35 @@ Format response (JSON only):
       // Silently fail – bawel comment is non-critical
     }
   }
+
+  // ── Receipt Scan ──
+
+  async scanReceipt(imageBase64: string, mimeType: string) {
+    const prompt = `Kamu adalah OCR parser untuk struk belanja Indonesia.
+
+Dari foto struk ini, ekstrak setiap item transaksi dalam format JSON array:
+[
+  { "label": "Nasi Goreng", "amount": 25000, "category": "makanan", "type": "expense" },
+  { "label": "Es Teh", "amount": 5000, "category": "minuman", "type": "expense" }
+]
+
+Catatan:
+- Harga dalam Rupiah (angka saja, tanpa "Rp")
+- Tentukan kategori: makanan, minuman, belanja, transportasi, hiburan, tagihan, kesehatan, pendidikan, kos, lainnya
+- Semua item dari struk adalah expense
+- Jika struk tidak terbaca, return { "error": "Struk tidak terbaca" }
+- HANYA return JSON, tanpa teks lain`;
+
+    const result = await this.ai.generateText(prompt, {
+      imageBase64,
+      mimeType,
+    });
+
+    try {
+      const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      return JSON.parse(cleaned);
+    } catch {
+      return { error: 'Gagal memproses struk', rawResponse: result };
+    }
+  }
 }

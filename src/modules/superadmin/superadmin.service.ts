@@ -150,4 +150,250 @@ export class SuperadminService {
     ]);
     return { totalPosts, totalReplies, postsToday, activeClasses: activeClasses.length };
   }
+
+  async getAcademicStats() {
+    const [
+      totalTasks,
+      totalSubmissions,
+      totalQuizzes,
+      totalAttempts,
+      avgScore,
+      passedAttempts,
+      examPredictions,
+      totalMaterials,
+      activeMaterials,
+      materialsByStatus,
+    ] = await Promise.all([
+      this.prisma.task.count(),
+      this.prisma.taskSubmission.count(),
+      this.prisma.quiz.count(),
+      this.prisma.quizAttempt.count(),
+      this.prisma.quizAttempt.aggregate({ _avg: { score: true } }),
+      this.prisma.quizAttempt.count({ where: { passed: true } }),
+      this.prisma.examPrediction.count(),
+      this.prisma.material.count(),
+      this.prisma.material.count({ where: { status: 'SUCCESS' } }),
+      this.prisma.material.groupBy({ by: ['status'], _count: true }),
+    ]);
+
+    const submissionRate = totalTasks > 0 ? Math.round((totalSubmissions / totalTasks) * 100) : 0;
+    const passRate = totalAttempts > 0 ? Math.round((passedAttempts / totalAttempts) * 100) : 0;
+
+    return {
+      tasks: { total: totalTasks, submissions: totalSubmissions, submissionRate },
+      quizzes: {
+        total: totalQuizzes,
+        attempts: totalAttempts,
+        avgScore: Math.round(avgScore._avg.score ?? 0),
+        passRate,
+      },
+      examPredictions,
+      materials: {
+        total: totalMaterials,
+        active: activeMaterials,
+        byStatus: materialsByStatus.map((m) => ({ status: m.status, count: m._count })),
+      },
+    };
+  }
+
+  async getDuitTrackerStats() {
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+
+    const [
+      totalTx,
+      todayTx,
+      uniqueUsers,
+      expenseSum,
+      incomeSum,
+      categoryBreakdown,
+      totalTrees,
+      totalSaved,
+      bawelEnabled,
+      receiptScans,
+    ] = await Promise.all([
+      this.prisma.transaction.count(),
+      this.prisma.transaction.count({ where: { createdAt: { gte: today } } }),
+      this.prisma.transaction.groupBy({ by: ['userId'], _count: true }).then((r) => r.length),
+      this.prisma.transaction.aggregate({ where: { type: 'expense' }, _sum: { amount: true } }),
+      this.prisma.transaction.aggregate({ where: { type: 'income' }, _sum: { amount: true } }),
+      this.prisma.transaction.groupBy({
+        by: ['category'],
+        _count: true,
+        _sum: { amount: true },
+        orderBy: { _count: { category: 'desc' } },
+        take: 10,
+      }),
+      this.prisma.savingTree.count(),
+      this.prisma.savingTree.aggregate({ _sum: { currentAmount: true } }),
+      this.prisma.bawelSetting.count({ where: { isEnabled: true } }),
+      this.prisma.transaction.count({ where: { inputMethod: 'receipt' } }),
+    ]);
+
+    return {
+      transactions: { total: totalTx, today: todayTx, uniqueUsers },
+      money: {
+        totalExpense: expenseSum._sum.amount ?? 0,
+        totalIncome: incomeSum._sum.amount ?? 0,
+      },
+      categories: categoryBreakdown.map((c) => ({
+        category: c.category,
+        count: c._count,
+        amount: c._sum.amount ?? 0,
+      })),
+      savingTrees: { total: totalTrees, totalSaved: totalSaved._sum.currentAmount ?? 0 },
+      bawel: { enabled: bawelEnabled },
+      receiptScans: { total: receiptScans },
+    };
+  }
+
+  async getGamificationStats() {
+    const [
+      totalUsers,
+      totalXpAgg,
+      activeStreaks,
+      avgStreak,
+      longestEver,
+      levelDistribution,
+      xpBySource,
+      topUsers,
+    ] = await Promise.all([
+      this.prisma.userGamification.count(),
+      this.prisma.userGamification.aggregate({ _sum: { totalXp: true } }),
+      this.prisma.userGamification.count({ where: { currentStreak: { gt: 0 } } }),
+      this.prisma.userGamification.aggregate({ _avg: { currentStreak: true } }),
+      this.prisma.userGamification.aggregate({ _max: { longestStreak: true } }),
+      this.prisma.userGamification.groupBy({
+        by: ['level'],
+        _count: true,
+        orderBy: { level: 'asc' },
+      }),
+      this.prisma.xpTransaction.groupBy({
+        by: ['source'],
+        _sum: { amount: true },
+        _count: true,
+        orderBy: { _sum: { amount: 'desc' } },
+      }),
+      this.prisma.userGamification.findMany({
+        orderBy: { totalXp: 'desc' },
+        take: 10,
+        include: { user: { select: { fullName: true, email: true } } },
+      }),
+    ]);
+
+    return {
+      totalUsers,
+      totalXp: totalXpAgg._sum.totalXp ?? 0,
+      streaks: {
+        active: activeStreaks,
+        avgStreak: Math.round(avgStreak._avg.currentStreak ?? 0),
+        longestEver: longestEver._max.longestStreak ?? 0,
+      },
+      levelDistribution: levelDistribution.map((l) => ({ level: l.level, count: l._count })),
+      xpBySource: xpBySource.map((x) => ({
+        source: x.source,
+        totalXp: x._sum.amount ?? 0,
+        count: x._count,
+      })),
+      topUsers: topUsers.map((u) => ({
+        name: u.user.fullName,
+        email: u.user.email,
+        level: u.level,
+        xp: u.totalXp,
+        streak: u.currentStreak,
+      })),
+    };
+  }
+
+  async getQnaStats() {
+    const [
+      totalQuestions,
+      unansweredQuestions,
+      totalAnswers,
+      reportedAnswers,
+      topContributors,
+      categoryData,
+    ] = await Promise.all([
+      this.prisma.qnaQuestion.count(),
+      this.prisma.qnaQuestion.count({ where: { status: 'open' } }),
+      this.prisma.qnaAnswer.count(),
+      this.prisma.qnaAnswer.count({ where: { reportCount: { gt: 0 } } }),
+      this.prisma.userReputation.findMany({
+        orderBy: { score: 'desc' },
+        take: 10,
+        include: { user: { select: { fullName: true, email: true } } },
+      }),
+      this.prisma.qnaQuestion.findMany({
+        select: { category: true },
+      }),
+    ]);
+
+    // Aggregate categories from string arrays
+    const catMap: Record<string, number> = {};
+    for (const q of categoryData) {
+      for (const cat of q.category) {
+        catMap[cat] = (catMap[cat] ?? 0) + 1;
+      }
+    }
+    const categories = Object.entries(catMap)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const answerRate = totalQuestions > 0
+      ? Math.round(((totalQuestions - unansweredQuestions) / totalQuestions) * 100)
+      : 0;
+
+    return {
+      questions: { total: totalQuestions, unanswered: unansweredQuestions },
+      answers: { total: totalAnswers, reported: reportedAnswers },
+      answerRate,
+      topContributors: topContributors.map((c) => ({
+        name: c.user.fullName,
+        email: c.user.email,
+        score: c.score,
+        approved: c.answersApproved,
+      })),
+      categories,
+    };
+  }
+
+  async getSystemStats() {
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+
+    const [
+      totalNotifications,
+      unreadNotifications,
+      briefingsToday,
+      totalBriefings,
+      totalSplitBills,
+      splitBillAmount,
+      totalTodos,
+      completedTodos,
+      totalKolektif,
+      kolektifCollected,
+    ] = await Promise.all([
+      this.prisma.notification.count(),
+      this.prisma.notification.count({ where: { isRead: false } }),
+      this.prisma.dailyBriefing.count({ where: { createdAt: { gte: today } } }),
+      this.prisma.dailyBriefing.count(),
+      this.prisma.splitBill.count(),
+      this.prisma.splitBill.aggregate({ _sum: { totalAmount: true } }),
+      this.prisma.personalTodo.count(),
+      this.prisma.personalTodo.count({ where: { status: 'done' } }),
+      this.prisma.kolektif.count(),
+      this.prisma.kolektifTransaction.aggregate({
+        where: { type: 'IN' },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const completionRate = totalTodos > 0 ? Math.round((completedTodos / totalTodos) * 100) : 0;
+
+    return {
+      notifications: { total: totalNotifications, unread: unreadNotifications },
+      briefings: { today: briefingsToday, total: totalBriefings },
+      splitBills: { total: totalSplitBills, totalAmount: splitBillAmount._sum.totalAmount ?? 0 },
+      todos: { completionRate, completed: completedTodos, total: totalTodos },
+      kolektif: { total: totalKolektif, totalCollected: kolektifCollected._sum.amount ?? 0 },
+    };
+  }
 }

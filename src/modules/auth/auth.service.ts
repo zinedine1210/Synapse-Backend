@@ -30,4 +30,15 @@ export class AuthService {
     this.logger.log(`User disinkronkan: ${user.email}`);
     return { message: 'User berhasil disinkronkan.', user };
   }
+
+  /**
+   * Mark onboarding as completed for a user.
+   */
+  async completeOnboarding(userId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { onboardingCompleted: true },
+    });
+    return { message: 'Onboarding selesai.' };
+  }
 }

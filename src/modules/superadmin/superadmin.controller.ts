@@ -87,4 +87,34 @@ export class SuperadminController {
   getForumStats() {
     return this.superadminService.getForumStats();
   }
+
+  /** GET /api/v1/superadmin/academic-stats – Statistik akademik */
+  @Get('academic-stats')
+  getAcademicStats() {
+    return this.superadminService.getAcademicStats();
+  }
+
+  /** GET /api/v1/superadmin/duit-tracker-stats – Statistik duit tracker */
+  @Get('duit-tracker-stats')
+  getDuitTrackerStats() {
+    return this.superadminService.getDuitTrackerStats();
+  }
+
+  /** GET /api/v1/superadmin/gamification-stats – Statistik gamifikasi */
+  @Get('gamification-stats')
+  getGamificationStats() {
+    return this.superadminService.getGamificationStats();
+  }
+
+  /** GET /api/v1/superadmin/qna-stats – Statistik Q&A */
+  @Get('qna-stats')
+  getQnaStats() {
+    return this.superadminService.getQnaStats();
+  }
+
+  /** GET /api/v1/superadmin/system-stats – Statistik sistem */
+  @Get('system-stats')
+  getSystemStats() {
+    return this.superadminService.getSystemStats();
+  }
 }

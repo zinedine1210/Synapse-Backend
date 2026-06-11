@@ -46,11 +46,15 @@ export class AiService {
   }
 
   /**
-  /**
    * General-purpose text generation. Used by Phase 1 features (Si Bawel, Briefing, etc.)
    */
-  async generateText(prompt: string): Promise<string> {
-    return this.callGemini([{ text: prompt }]);
+  async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string }): Promise<string> {
+    const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [];
+    if (options?.imageBase64 && options?.mimeType) {
+      parts.push({ inline_data: { mime_type: options.mimeType, data: options.imageBase64 } });
+    }
+    parts.push({ text: prompt });
+    return this.callGemini(parts);
   }
 
   /**

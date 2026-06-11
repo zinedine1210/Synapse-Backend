@@ -76,6 +76,14 @@ model User {
   qnaAnswers     QnaAnswer[]
   reputation     UserReputation?
   dailyBriefings DailyBriefing[]
+  gamification   UserGamification?
+  xpTransactions XpTransaction[]
+  foodPreference FoodPreference?
+  splitBills     SplitBill[]
+  notificationPref NotificationPreference?
+  todoCategories TodoCategory[]
+  receiptScans   ReceiptScan[]
+  onboardingCompleted Boolean @default(false)
 }
 
 model Class {
@@ -739,6 +747,158 @@ model DailyBriefing {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+  @@index([userId])
+}
+
+// ==============================
+// Gamification
+// ==============================
+
+model UserGamification {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  totalXp        Int      @default(0)
+  level          Int      @default(1)
+  currentStreak  Int      @default(0)
+  longestStreak  Int      @default(0)
+  lastActiveDate DateTime?
+  achievements   String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model XpTransaction {
+  id          String   @id @default(uuid())
+  userId      String
+  amount      Int
+  source      String
+  description String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, createdAt])
+}
+
+// ==============================
+// Food Recommendation
+// ==============================
+
+model FoodPreference {
+  userId              String   @id
+  dislikedIngredients String[]
+  preferredCuisines   String[]
+  spicyLevel          Int      @default(1)
+  dietType            String   @default("none")
+  avgMealBudget       Float?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==============================
+// Split Bill
+// ==============================
+
+model SplitBill {
+  id              String   @id @default(uuid())
+  userId          String
+  eventName       String?
+  totalAmount     Float
+  receiptImageUrl String?
+  status          String   @default("settling")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items        SplitBillItem[]
+  participants SplitParticipant[]
+
+  @@index([userId])
+}
+
+model SplitBillItem {
+  id         String   @id @default(uuid())
+  billId     String
+  name       String
+  price      Float
+  quantity   Int      @default(1)
+  assignedTo String[]
+
+  bill SplitBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+}
+
+model SplitParticipant {
+  id        String  @id @default(uuid())
+  billId    String
+  name      String
+  totalOwed Float   @default(0)
+  isPaid    Boolean @default(false)
+
+  bill SplitBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+}
+
+// ==============================
+// Notification Preferences
+// ==============================
+
+model NotificationPreference {
+  userId           String  @id
+  deadlineReminder Boolean @default(true)
+  budgetAlert      Boolean @default(true)
+  streakReminder   Boolean @default(true)
+  idleReminder     Boolean @default(true)
+  weeklyRecap      Boolean @default(true)
+  quietHoursStart  String?
+  quietHoursEnd    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==============================
+// Todo Categories (Custom)
+// ==============================
+
+model TodoCategory {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  emoji     String   @default("📌")
+  color     String   @default("#6b7280")
+  sortOrder Int      @default(0)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+// ==============================
+// Receipt Scan
+// ==============================
+
+model ReceiptScan {
+  id          String   @id @default(uuid())
+  userId      String
+  imageUrl    String
+  storeName   String?
+  scanDate    DateTime?
+  totalAmount Float?
+  itemCount   Int      @default(0)
+  status      String   @default("processed")
+  rawResponse String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 

@@ -16,7 +16,16 @@ async function main() {
   await prisma.pricingPlan.upsert({
     where: { name: 'FREE' },
     update: {
-      features: ['class', 'pdf_export', 'pertemuan', 'tugas'],
+      features: [
+        // Akademik & Kelas
+        'class', 'forum', 'task', 'unread_tracking',
+        // AI & Dokumen
+        'pdf_export',
+        // Produktivitas
+        'todo_list', 'qna_public',
+        // Gamifikasi & UX
+        'notification', 'quick_action',
+      ],
     },
     create: {
       name: 'FREE',
@@ -24,7 +33,12 @@ async function main() {
       maxUploadPerMonth: 5,
       maxFileSizeMb: 10,
       aiRequestLimit: 10,
-      features: ['class', 'pdf_export', 'pertemuan', 'tugas'],
+      features: [
+        'class', 'forum', 'task', 'unread_tracking',
+        'pdf_export',
+        'todo_list', 'qna_public',
+        'notification', 'quick_action',
+      ],
       price: 0,
     },
   });
@@ -32,7 +46,18 @@ async function main() {
   await prisma.pricingPlan.upsert({
     where: { name: 'PRO' },
     update: {
-      features: ['class', 'quiz', 'schedule_parser', 'pdf_export', 'forum', 'pertemuan', 'tugas', 'kolektif', 'kelompok', 'prediksi'],
+      features: [
+        // Akademik & Kelas
+        'class', 'forum', 'quiz', 'task', 'kolektif', 'group', 'exam_prediction', 'canvas', 'unread_tracking',
+        // AI & Dokumen
+        'ai_digitalization', 'schedule_parser', 'pdf_export', 'ai_insight', 'daily_briefing',
+        // Keuangan
+        'duit_tracker', 'si_bawel', 'split_bill', 'receipt_scanner',
+        // Produktivitas
+        'todo_list', 'qna_public', 'food_recommend',
+        // Gamifikasi & UX
+        'gamification', 'notification', 'command_palette', 'quick_action',
+      ],
     },
     create: {
       name: 'PRO',
@@ -40,7 +65,13 @@ async function main() {
       maxUploadPerMonth: 50,
       maxFileSizeMb: 25,
       aiRequestLimit: 200,
-      features: ['class', 'quiz', 'schedule_parser', 'pdf_export', 'forum', 'pertemuan', 'tugas', 'kolektif', 'kelompok', 'prediksi'],
+      features: [
+        'class', 'forum', 'quiz', 'task', 'kolektif', 'group', 'exam_prediction', 'canvas', 'unread_tracking',
+        'ai_digitalization', 'schedule_parser', 'pdf_export', 'ai_insight', 'daily_briefing',
+        'duit_tracker', 'si_bawel', 'split_bill', 'receipt_scanner',
+        'todo_list', 'qna_public', 'food_recommend',
+        'gamification', 'notification', 'command_palette', 'quick_action',
+      ],
       price: 49000,
     },
   });
