@@ -28,6 +28,8 @@ import { GamificationModule } from './modules/gamification/gamification.module';
 import { FoodRecommendModule } from './modules/food-recommend/food-recommend.module';
 import { SplitBillModule } from './modules/split-bill/split-bill.module';
 import { InsightModule } from './modules/insight/insight.module';
+import { SearchModule } from './modules/search/search.module';
+import { ProfileModule } from './modules/profile/profile.module';
 import { validateEnv } from './config/env.validation';
 
 @Module({
@@ -76,6 +78,8 @@ import { validateEnv } from './config/env.validation';
     FoodRecommendModule,
     SplitBillModule,
     InsightModule,
+    SearchModule,
+    ProfileModule,
   ],
   providers: [
     // ─── Global Rate Limit Guard ──────────────────────────────────────────────

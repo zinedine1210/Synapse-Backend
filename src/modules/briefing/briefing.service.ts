@@ -23,31 +23,49 @@ export class BriefingService {
     return this.generateBriefing(userId, today);
   }
 
+  /**
+   * Selects the top N expense transactions by amount from a list.
+   * Exported logic for testability (Property 7).
+   */
+  static selectTopExpenses(
+    transactions: { label: string; amount: number; type: string }[],
+    n: number = 3,
+  ): { label: string; amount: number }[] {
+    return transactions
+      .filter((t) => t.type === 'expense')
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, n)
+      .map((t) => ({ label: t.label, amount: t.amount }));
+  }
+
   async generateBriefing(userId: string, date: Date) {
     const today = new Date(date);
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    // 24 hours ago for recent expenses
+    const last24h = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+
+    // Day name for matching today's class schedule
+    const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const todayDayName = dayNames[today.getDay()];
+
     // Gather data
-    const [todos, recentTx, upcomingDeadlines, classMemberships, trees] = await Promise.all([
+    const [todos, recentExpenses, classMemberships, trees] = await Promise.all([
+      // All pending todos with due dates
       this.prisma.personalTodo.findMany({
         where: { userId, status: 'pending' },
         orderBy: { dueDate: 'asc' },
         take: 10,
       }),
+      // Transactions in last 24 hours for top expenses
       this.prisma.transaction.findMany({
-        where: { userId, date: { gte: new Date(today.getTime() - 7 * 86400000) } },
-        orderBy: { date: 'desc' },
-        take: 20,
+        where: { userId, date: { gte: last24h } },
+        orderBy: { amount: 'desc' },
+        take: 50,
       }),
-      this.prisma.personalTodo.findMany({
-        where: {
-          userId,
-          status: 'pending',
-          dueDate: { gte: today, lte: new Date(today.getTime() + 3 * 86400000) },
-        },
-      }),
+      // Class memberships with tasks and schedule info
       this.prisma.classMember.findMany({
         where: { userId },
         include: {
@@ -56,85 +74,134 @@ export class BriefingService {
               tasks: {
                 where: { deadline: { gte: today, lte: new Date(today.getTime() + 7 * 86400000) } },
                 orderBy: { deadline: 'asc' },
-                take: 5,
+                take: 10,
               },
-              forumPosts: {
-                where: { createdAt: { gte: new Date(today.getTime() - 2 * 86400000) } },
-                orderBy: { createdAt: 'desc' },
-                take: 5,
-                include: { author: { select: { fullName: true } } },
+              sessions: {
+                orderBy: { sequence: 'asc' },
+                take: 1,
+                where: { sequence: { gte: 1 } },
               },
             },
           },
         },
       }),
+      // Saving trees
       this.prisma.savingTree.findMany({
         where: { userId },
         take: 5,
       }),
     ]);
 
-    const weekIncome = recentTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const weekExpense = recentTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-
-    const todosText = todos.length > 0
-      ? todos.map(t => `- ${t.title} (prioritas: ${t.priority}${t.dueDate ? `, deadline: ${t.dueDate.toLocaleDateString('id-ID')}` : ''})`).join('\n')
-      : 'Tidak ada to-do pending.';
-
-    const deadlinesText = upcomingDeadlines.length > 0
-      ? upcomingDeadlines.map(t => `- ${t.title} (${t.dueDate?.toLocaleDateString('id-ID')})`).join('\n')
-      : 'Tidak ada deadline dekat.';
-
-    // Class tasks & forum
-    let classText = '';
+    // --- 8.1: Specific task titles with deadlines ---
+    const allTasks: { title: string; className: string; deadline: string }[] = [];
     for (const cm of classMemberships) {
-      const cls = cm.class;
-      const classTasks = cls.tasks;
-      const classForum = cls.forumPosts;
-      if (classTasks.length > 0 || classForum.length > 0) {
-        classText += `\n📚 Kelas: ${cls.name}\n`;
-        if (classTasks.length > 0) {
-          classText += 'Tugas:\n' + classTasks.map((t: any) => `- ${t.title} (deadline: ${t.deadline?.toLocaleDateString('id-ID')})`).join('\n') + '\n';
-        }
-        if (classForum.length > 0) {
-          classText += `Diskusi baru: ${classForum.length} post terbaru\n`;
-        }
+      for (const task of cm.class.tasks) {
+        allTasks.push({
+          title: task.title,
+          className: cm.class.name,
+          deadline: task.deadline
+            ? task.deadline.toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })
+            : 'tanpa deadline',
+        });
       }
     }
 
-    // Saving trees
+    const tasksText = allTasks.length > 0
+      ? allTasks.map((t) => `- ${t.title} (${t.className}) — deadline ${t.deadline}`).join('\n')
+      : 'Tidak ada tugas mendatang.';
+
+    // --- 8.2: Specific todo titles with due dates ---
+    const todosText = todos.length > 0
+      ? todos.map((t) => {
+          const dueDateStr = t.dueDate
+            ? t.dueDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })
+            : 'tanpa tanggal';
+          return `- ${t.title} — ${dueDateStr}`;
+        }).join('\n')
+      : 'Tidak ada to-do pending.';
+
+    // --- 8.3: Top 3 expense transactions from last 24 hours ---
+    const topExpenses = BriefingService.selectTopExpenses(recentExpenses, 3);
+    const expensesText = topExpenses.length > 0
+      ? topExpenses.map((t) => `- ${t.label}: Rp${t.amount.toLocaleString('id-ID')}`).join('\n')
+      : 'Tidak ada pengeluaran 24 jam terakhir.';
+
+    // --- 8.4: Today's class sessions (classes scheduled today) ---
+    const todayClasses: { className: string; sessionTitle: string; time: string; room: string }[] = [];
+    for (const cm of classMemberships) {
+      const cls = cm.class;
+      if (cls.day && cls.day.toLowerCase() === todayDayName.toLowerCase()) {
+        // Get the next/current session title if available
+        const sessionTitle = cls.sessions.length > 0 ? cls.sessions[0].title : 'Pertemuan';
+        todayClasses.push({
+          className: cls.name,
+          sessionTitle,
+          time: cls.time || '-',
+          room: cls.room || '-',
+        });
+      }
+    }
+
+    const classScheduleText = todayClasses.length > 0
+      ? todayClasses.map((c) => `- ${c.className}: "${c.sessionTitle}" — ${c.time}, Ruang ${c.room}`).join('\n')
+      : 'Tidak ada kelas hari ini.';
+
+    // --- 8.5: Saving tree progress (name, percentage) ---
     const treesText = trees.length > 0
-      ? trees.map(t => {
+      ? trees.map((t) => {
           const pct = t.targetAmount > 0 ? Math.round((t.currentAmount / t.targetAmount) * 100) : 0;
-          return `- ${t.name}: Rp${t.currentAmount.toLocaleString('id-ID')} / Rp${t.targetAmount.toLocaleString('id-ID')} (${pct}%)`;
+          return `- ${t.name}: ${pct}% (Rp${t.currentAmount.toLocaleString('id-ID')} / Rp${t.targetAmount.toLocaleString('id-ID')})`;
         }).join('\n')
       : '';
 
-    const prompt = `Kamu adalah asisten pribadi yang ramah. Buat briefing harian singkat untuk mahasiswa.
+    // Build AI prompt with structured section markers for frontend parsing
+    const prompt = `Kamu adalah asisten pribadi yang ramah untuk mahasiswa. Buat briefing harian yang terstruktur.
 
-Data hari ini (${today.toLocaleDateString('id-ID')}):
+Data hari ini (${today.toLocaleDateString('id-ID')}, ${todayDayName}):
 
-📋 To-Do Pending:
+📋 TUGAS KELAS (deadline minggu ini):
+${tasksText}
+
+✅ TO-DO PERSONAL:
 ${todosText}
 
-⏰ Deadline 3 Hari Kedepan:
-${deadlinesText}
+💸 TOP PENGELUARAN 24 JAM TERAKHIR:
+${expensesText}
 
-💰 Keuangan 7 Hari Terakhir:
-- Pemasukan: Rp${weekIncome.toLocaleString('id-ID')}
-- Pengeluaran: Rp${weekExpense.toLocaleString('id-ID')}
-- Saldo: Rp${(weekIncome - weekExpense).toLocaleString('id-ID')}
-${classText ? `\n📚 KELAS:\n${classText}` : ''}${treesText ? `\n🌳 Tabungan:\n${treesText}` : ''}
+📚 JADWAL KELAS HARI INI:
+${classScheduleText}
+${treesText ? `\n🌳 PROGRESS TABUNGAN:\n${treesText}` : ''}
 
-Buat briefing harian yang:
-1. Sapa user (sesuaikan dengan waktu: pagi/siang/sore)
-2. Rangkum to-do yang harus dikerjakan hari ini
-3. Ingatkan deadline yang dekat (termasuk tugas kelas)
-4. Kasih insight singkat soal keuangan jika ada yang perlu diperhatikan
-5. Jika ada progress tabungan, kasih semangat
-6. Tutup dengan motivasi singkat
+INSTRUKSI FORMAT OUTPUT:
+Buat briefing menggunakan section markers berikut agar bisa di-parse oleh frontend. Setiap section HARUS diawali dengan marker yang tepat:
 
-Format: Markdown, bahasa Indonesia, casual tapi informatif. Max 300 kata.`;
+<!-- SECTION:greeting -->
+(Sapa user sesuai waktu: pagi/siang/sore. 1-2 kalimat.)
+
+<!-- SECTION:tugas -->
+(Rangkum tugas kelas yang mendekati deadline. Sebutkan JUDUL SPESIFIK dan TANGGAL deadline. Jika tidak ada tugas, skip section ini.)
+
+<!-- SECTION:todo -->
+(Rangkum to-do personal yang perlu dikerjakan. Sebutkan JUDUL SPESIFIK dan tanggal jatuh tempo. Jika tidak ada, skip section ini.)
+
+<!-- SECTION:keuangan -->
+(Sebutkan 3 pengeluaran terbesar 24 jam terakhir dengan LABEL dan JUMLAH SPESIFIK. Jika tidak ada, skip section ini.)
+
+<!-- SECTION:kelas -->
+(Sebutkan jadwal kelas hari ini: nama kelas, judul pertemuan, JAM, dan RUANGAN. Jika tidak ada kelas, skip section ini.)
+
+<!-- SECTION:tabungan -->
+(Sebutkan nama pohon tabungan dan PERSENTASE progress. Kasih semangat singkat. Jika tidak ada tabungan, skip section ini.)
+
+<!-- SECTION:motivasi -->
+(Tutup dengan 1 kalimat motivasi singkat yang relevan.)
+
+ATURAN:
+- Gunakan Bahasa Indonesia, casual tapi informatif
+- Sebutkan data SPESIFIK (judul, angka, tanggal) bukan generik
+- Max 300 kata total
+- JANGAN tambahkan section yang tidak ada datanya
+- Format konten di dalam setiap section sebagai markdown (bold, list, dll)`;
 
     const content = await this.ai.generateText(prompt);
 

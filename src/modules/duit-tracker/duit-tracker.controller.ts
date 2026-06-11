@@ -78,6 +78,11 @@ export class DuitTrackerController {
     return this.svc.getBudgets(user.id, month, year);
   }
 
+  @Delete('budgets/:id')
+  deleteBudget(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteBudget(user.id, id);
+  }
+
   // ── Saving Trees ──
 
   @Post('trees')

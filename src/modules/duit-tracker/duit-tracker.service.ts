@@ -217,6 +217,14 @@ export class DuitTrackerService {
     });
   }
 
+  async deleteBudget(userId: string, id: string) {
+    const budget = await this.prisma.categoryBudget.findUnique({ where: { id } });
+    if (!budget) throw new NotFoundException('Budget tidak ditemukan');
+    if (budget.userId !== userId) throw new ForbiddenException('Tidak memiliki akses');
+    await this.prisma.categoryBudget.delete({ where: { id } });
+    return { success: true };
+  }
+
   // ── Saving Trees ──
 
   async createTree(userId: string, dto: CreateTreeDto) {

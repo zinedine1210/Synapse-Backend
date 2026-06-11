@@ -90,6 +90,7 @@ model User {
   weeklyProgress         WeeklyChallengeProgress[]
   foodFavorites          FoodFavorite[]
   foodHistory            FoodRecommendationHistory[]
+  profile                UserProfile?
 }
 
 model Class {
@@ -1066,4 +1067,25 @@ model FoodRecommendationHistory {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+// ==============================
+// User Profile (AI Context & Onboarding Data)
+// ==============================
+
+model UserProfile {
+  userId        String   @id
+  university    String?
+  hobbies       String[]
+  job           String?
+  reason        String?
+  avatarUrl     String?
+  dailyHabits   String?  @db.VarChar(300)
+  lifeGoals     String?  @db.VarChar(300)
+  studySchedule String?  @db.VarChar(200)
+  personalNotes String?  @db.VarChar(200)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
