@@ -31,9 +31,18 @@ async function bootstrap() {
   );
 
   // ─── CORS ─────────────────────────────────────────────────────────────────
-  const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
+  const corsOriginEnv = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
+  // Support multiple origins separated by comma
+  const allowedOrigins = corsOriginEnv.split(',').map(o => o.trim()).filter(Boolean);
   app.enableCors({
-    origin: corsOrigin,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, server-to-server)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   });
 
