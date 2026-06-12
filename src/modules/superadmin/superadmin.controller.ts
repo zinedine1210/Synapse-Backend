@@ -8,6 +8,7 @@ import { Role } from '@prisma/client';
 import { UpdatePlanConfigDto } from './dto/update-plan-config.dto';
 import { CreatePricingPlanDto } from './dto/create-pricing-plan.dto';
 import { UpdatePricingPlanDto } from './dto/update-pricing-plan.dto';
+import { CreateUserDto } from './dto/create-user.dto';
 
 @Controller('superadmin')
 @UseGuards(AuthGuard, RolesGuard)
@@ -61,6 +62,12 @@ export class SuperadminController {
     return this.superadminService.deletePricingPlan(id);
   }
 
+  /** POST /api/v1/superadmin/users – Buat user baru */
+  @Post('users')
+  createUser(@Body() dto: CreateUserDto) {
+    return this.superadminService.createUser(dto);
+  }
+
   /** PATCH /api/v1/superadmin/users/:userId/plan – Assign plan ke user */
   @Patch('users/:userId/plan')
   assignUserPlan(
@@ -68,6 +75,12 @@ export class SuperadminController {
     @Body('planName') planName: string,
   ) {
     return this.superadminService.assignUserPlan(userId, planName);
+  }
+
+  /** DELETE /api/v1/superadmin/users/:userId – Hapus user */
+  @Delete('users/:userId')
+  deleteUser(@Param('userId') userId: string) {
+    return this.superadminService.deleteUser(userId);
   }
 
   /** GET /api/v1/superadmin/classes – Semua kelas di sistem */

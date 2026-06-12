@@ -1,10 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { PrismaService } from '../../database/prisma.service';
 import { UpdatePlanConfigDto } from './dto/update-plan-config.dto';
+import { CreateUserDto } from './dto/create-user.dto';
 
 @Injectable()
 export class SuperadminService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(SuperadminService.name);
+  private readonly supabaseAdmin: SupabaseClient;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {
+    this.supabaseAdmin = createClient(
+      this.configService.get<string>('SUPABASE_URL')!,
+      this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+  }
 
   async getSystemAnalytics() {
     const [
@@ -101,6 +115,58 @@ export class SuperadminService {
       where: { id: userId },
       data: { plan: planName },
     });
+  }
+
+  async createUser(dto: CreateUserDto) {
+    // 1. Create user in Supabase Auth
+    const { data: authData, error: authError } = await this.supabaseAdmin.auth.admin.createUser({
+      email: dto.email,
+      password: dto.password,
+      email_confirm: true,
+      user_metadata: { full_name: dto.fullName },
+    });
+
+    if (authError) {
+      this.logger.warn(`Gagal membuat user Supabase: ${authError.message}`);
+      throw new BadRequestException(authError.message);
+    }
+
+    // 2. Create user in local DB
+    const user = await this.prisma.user.create({
+      data: {
+        id: authData.user.id,
+        email: dto.email,
+        fullName: dto.fullName,
+        role: dto.role === 'SUPERADMIN' ? 'SUPERADMIN' : 'USER',
+      },
+    });
+
+    this.logger.log(`User dibuat oleh superadmin: ${user.email}`);
+    return { message: 'User berhasil dibuat.', user };
+  }
+
+  async deleteUser(userId: string) {
+    // 1. Check user exists
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User tidak ditemukan.');
+    }
+
+    if (user.role === 'SUPERADMIN') {
+      throw new BadRequestException('Tidak bisa menghapus akun SUPERADMIN.');
+    }
+
+    // 2. Delete from local DB (cascade will handle relations)
+    await this.prisma.user.delete({ where: { id: userId } });
+
+    // 3. Delete from Supabase Auth
+    const { error: authError } = await this.supabaseAdmin.auth.admin.deleteUser(userId);
+    if (authError) {
+      this.logger.warn(`User dihapus dari DB tapi gagal hapus dari Supabase: ${authError.message}`);
+    }
+
+    this.logger.log(`User dihapus oleh superadmin: ${user.email}`);
+    return { message: 'User berhasil dihapus.' };
   }
 
   async getAllClasses(page = 1, limit = 50) {
