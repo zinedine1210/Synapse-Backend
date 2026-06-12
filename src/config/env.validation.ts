@@ -32,6 +32,11 @@ const envSchema = z.object({
   // Rate Limiting
   THROTTLE_TTL: z.string().default('60'),
   THROTTLE_LIMIT: z.string().default('30'),
+
+  // Web Push (VAPID) — optional, push disabled if missing
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

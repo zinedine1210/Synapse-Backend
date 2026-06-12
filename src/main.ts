@@ -31,13 +31,15 @@ async function bootstrap() {
   );
 
   // ─── CORS ─────────────────────────────────────────────────────────────────
+  const corsOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:3000';
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+    origin: corsOrigin,
     credentials: true,
   });
 
-  // ─── WebSocket Adapter ────────────────────────────────────────────────────
-  app.useWebSocketAdapter(new IoAdapter(app));
+  // ─── WebSocket Adapter (with CORS) ────────────────────────────────────────
+  const ioAdapter = new IoAdapter(app);
+  app.useWebSocketAdapter(ioAdapter);
 
   // ─── Global Prefix ────────────────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');

@@ -81,6 +81,7 @@ model User {
   foodPreference         FoodPreference?
   splitBills             SplitBill[]
   notificationPref       NotificationPreference?
+  pushSubscriptions      PushSubscription[]
   todoCategories         TodoCategory[]
   receiptScans           ReceiptScan[]
   onboardingCompleted    Boolean                     @default(false)
@@ -878,8 +879,28 @@ model NotificationPreference {
   achievementAlert Boolean @default(true)
   quietHoursStart  String?
   quietHoursEnd    String?
+  pushEnabled      Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==============================
+// Push Subscriptions (Web Push)
+// ==============================
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, endpoint])
+  @@index([userId])
 }
 
 // ==============================

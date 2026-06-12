@@ -119,7 +119,9 @@ export class ProfileService {
 
     if (uploadError) {
       this.logger.error('Gagal upload avatar ke Supabase Storage:', uploadError);
-      throw new BadRequestException('Gagal mengunggah foto. Coba lagi.');
+      throw new BadRequestException(
+        `Gagal mengunggah foto: ${uploadError.message || 'Pastikan bucket "avatars" sudah dibuat di Supabase Storage.'}`,
+      );
     }
 
     // Get public URL
