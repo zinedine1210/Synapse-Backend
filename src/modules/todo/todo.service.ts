@@ -36,7 +36,7 @@ export class TodoService {
 
     return this.prisma.personalTodo.findMany({
       where,
-      include: { reminders: true },
+      include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
       orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
     });
   }
@@ -44,7 +44,7 @@ export class TodoService {
   async getById(userId: string, id: string) {
     const todo = await this.prisma.personalTodo.findFirst({
       where: { id, userId },
-      include: { reminders: true },
+      include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
     });
     if (!todo) throw new NotFoundException('To-do tidak ditemukan.');
     return todo;
@@ -63,7 +63,7 @@ export class TodoService {
     return this.prisma.personalTodo.update({
       where: { id },
       data,
-      include: { reminders: true },
+      include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
     });
   }
 
@@ -78,7 +78,7 @@ export class TodoService {
         status: newStatus,
         completedAt: newStatus === 'done' ? new Date() : null,
       },
-      include: { reminders: true },
+      include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
     });
   }
 
