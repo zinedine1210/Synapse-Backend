@@ -369,6 +369,13 @@ export class DashboardService {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
+    // Get user's plan limit for briefing
+    const userWithPlan = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      include: { pricingPlan: true },
+    });
+    const briefingLimit = userWithPlan?.pricingPlan?.aiBriefingLimit ?? 2;
+
     const existing = await this.prisma.dailyBriefing.findUnique({
       where: {
         userId_date: {
@@ -388,9 +395,10 @@ export class DashboardService {
       }
     }
 
-    if (hitCount >= 2) {
+    // Skip limit check for SUPERADMIN; use plan-based limit for others
+    if (user.role !== 'SUPERADMIN' && briefingLimit > 0 && hitCount >= briefingLimit) {
       throw new BadRequestException(
-        'Batas harian pembuatan briefing AI telah tercapai (maksimal 2 kali sehari).',
+        `Batas harian pembuatan briefing AI telah tercapai (maksimal ${briefingLimit} kali sehari). Upgrade paket untuk akses lebih banyak.`,
       );
     }
 
