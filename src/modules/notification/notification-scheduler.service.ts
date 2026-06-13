@@ -146,6 +146,36 @@ export class NotificationSchedulerService {
         );
       }
 
+      // 3b. Todo due today
+      const todayTodos = await this.prisma.personalTodo.findMany({
+        where: {
+          status: 'pending',
+          dueDate: { gte: today, lt: tomorrow },
+        },
+        select: { userId: true, title: true },
+      });
+
+      const todayTodosByUser: Record<string, string[]> = {};
+      for (const t of todayTodos) {
+        if (!todayTodosByUser[t.userId]) todayTodosByUser[t.userId] = [];
+        todayTodosByUser[t.userId].push(t.title);
+      }
+
+      for (const [userId, titles] of Object.entries(todayTodosByUser)) {
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId },
+        });
+        if (pref && !pref.deadlineReminder) continue;
+
+        const preview = titles.slice(0, 3).join(', ');
+        await this.notificationService.createNotification(
+          userId,
+          '📋 Todo Hari Ini',
+          `${titles.length} todo jatuh tempo hari ini: ${preview}${titles.length > 3 ? '...' : ''}`,
+          { category: 'todo', actionUrl: '/todos' },
+        );
+      }
+
       // 4. Idle user reminder (3+ days without transaction)
       const threeDaysAgo = new Date(now.getTime() - 3 * 86400000);
       const allUsers = await this.prisma.user.findMany({

@@ -1,5 +1,5 @@
 -- AlterTable
-ALTER TABLE "PersonalTodo" ADD COLUMN     "sortOrder" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "PersonalTodo" ADD COLUMN IF NOT EXISTS "sortOrder" INTEGER NOT NULL DEFAULT 0;
 
 -- CreateTable
 CREATE TABLE "TodoCategory" (

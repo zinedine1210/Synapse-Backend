@@ -15,4 +15,14 @@ export class UpdatePlanConfigDto {
   @IsInt()
   @Min(0)
   aiRequestLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiBriefingLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiWeeklyRoastLimit?: number;
 }

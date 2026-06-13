@@ -93,6 +93,7 @@ model User {
   foodFavorites          FoodFavorite[]
   foodHistory            FoodRecommendationHistory[]
   profile                UserProfile?
+  aiUsageLogs            AiUsageLog[]
 }
 
 model Class {
@@ -253,12 +254,26 @@ model PricingPlan {
   maxUploadPerMonth Int      @default(5)
   maxFileSizeMb     Int      @default(10)
   aiRequestLimit    Int      @default(10)
+  aiBriefingLimit   Int      @default(1) // max briefing generations per day
+  aiWeeklyRoastLimit Int     @default(1) // max weekly roast per week
   features          String[] // e.g. ["class", "quiz", "schedule_parser", "pdf_export"]
   price             Float    @default(0)
   durationDays      Int      @default(0) // 0 = unlimited, 30 = 1 month, 365 = 1 year
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   users             User[]
+}
+
+// Tracking penggunaan fitur AI per user
+model AiUsageLog {
+  id        String   @id @default(uuid())
+  userId    String
+  feature   String   // e.g. "briefing", "weekly_roast", "chat_sibawel", "task_ai_solver"
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, feature, createdAt])
 }
 
 // ==============================

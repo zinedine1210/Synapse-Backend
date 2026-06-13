@@ -25,6 +25,16 @@ export class UpdatePricingPlanDto {
   aiRequestLimit?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiBriefingLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiWeeklyRoastLimit?: number;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   features?: string[];

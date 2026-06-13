@@ -21,6 +21,16 @@ export class CreatePricingPlanDto {
   @Min(0)
   aiRequestLimit: number;
 
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiBriefingLimit?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiWeeklyRoastLimit?: number;
+
   @IsArray()
   @IsString({ each: true })
   features: string[];

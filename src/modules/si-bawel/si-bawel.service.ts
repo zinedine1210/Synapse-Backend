@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 import { UpdateBawelSettingDto } from './dto/update-setting.dto';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class SiBawelService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly aiUsage: AiUsageService,
   ) {}
 
   async getSetting(userId: string) {
@@ -105,6 +107,9 @@ Max 4-5 kalimat.`;
   }
 
   async getWeeklyRoast(userId: string) {
+    // Check AI usage limit
+    await this.aiUsage.checkAndRecord(userId, 'weekly_roast');
+
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
