@@ -53,6 +53,11 @@ export class DuitTrackerController {
     return this.svc.updateTransaction(user.id, id, dto);
   }
 
+  @Post('transactions/:id/comment')
+  generateComment(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.generateBawelCommentManual(user.id, id);
+  }
+
   @Get('summary')
   getSummary(
     @GetUser() user: User,

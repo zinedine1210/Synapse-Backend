@@ -194,7 +194,10 @@ export class QnaService {
   async getMyQuestions(userId: string) {
     return this.prisma.qnaQuestion.findMany({
       where: { userId },
-      include: { _count: { select: { answers: true } } },
+      include: {
+        user: { select: { id: true, fullName: true, avatarUrl: true } },
+        _count: { select: { answers: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -419,7 +422,7 @@ export class QnaService {
 
     if (trendingData.length === 0) {
       // Fallback: return most viewed questions
-      return this.prisma.qnaQuestion.findMany({
+      const fallbackQuestions = await this.prisma.qnaQuestion.findMany({
         where: { isPublic: true },
         include: {
           user: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -428,6 +431,13 @@ export class QnaService {
         orderBy: { viewCount: 'desc' },
         take: limit,
       });
+      return {
+        questions: fallbackQuestions,
+        total: fallbackQuestions.length,
+        page: 1,
+        limit,
+        totalPages: 1,
+      };
     }
 
     // Get the answerIds and their question mapping
@@ -457,7 +467,13 @@ export class QnaService {
       .map(([id]) => id);
 
     if (sortedQuestionIds.length === 0) {
-      return [];
+      return {
+        questions: [],
+        total: 0,
+        page: 1,
+        limit,
+        totalPages: 1,
+      };
     }
 
     // Fetch the actual questions
@@ -473,13 +489,21 @@ export class QnaService {
     });
 
     // Maintain the sorted order and attach trending score
-    return sortedQuestionIds
+    const resultQuestions = sortedQuestionIds
       .map((id) => {
         const q = questions.find((question) => question.id === id);
         if (!q) return null;
         return { ...q, trendingScore: questionScores.get(id) || 0 };
       })
       .filter(Boolean);
+
+    return {
+      questions: resultQuestions as any[],
+      total: resultQuestions.length,
+      page: 1,
+      limit,
+      totalPages: 1,
+    };
   }
 
   async deleteQuestion(userId: string, questionId: string) {

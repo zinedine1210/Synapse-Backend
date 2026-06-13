@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { NotificationService } from '../notification/notification.service';
@@ -98,8 +98,8 @@ export class DuitTrackerService {
       },
     });
 
-    // Generate Si Bawel comment asynchronously
-    this.generateBawelComment(userId, tx.id, dto).catch(() => {});
+    // Generate Si Bawel comment asynchronously (Disabled automatically to save tokens)
+    // this.generateBawelComment(userId, tx.id, dto).catch(() => {});
 
     // Check budget alert for expense transactions
     if (dto.type === 'expense') {
@@ -107,6 +107,44 @@ export class DuitTrackerService {
     }
 
     return tx;
+  }
+
+  async generateBawelCommentManual(userId: string, txId: string) {
+    const tx = await this.prisma.transaction.findFirst({
+      where: { id: txId, userId },
+    });
+    if (!tx) {
+      throw new NotFoundException('Transaksi tidak ditemukan.');
+    }
+
+    const dto = {
+      amount: tx.amount,
+      type: tx.type,
+      category: tx.category,
+      subcategory: tx.subcategory || undefined,
+      label: tx.label,
+      note: tx.note || undefined,
+      inputMethod: tx.inputMethod,
+      receiptImageUrl: tx.receiptImageUrl || undefined,
+      linkedTreeId: tx.linkedTreeId || undefined,
+      date: tx.date.toISOString(),
+    };
+
+    try {
+      await this.generateBawelComment(userId, tx.id, dto);
+    } catch {
+      throw new BadRequestException('Gagal menghasilkan komentar dari Si Bawel.');
+    }
+
+    const updatedTx = await this.prisma.transaction.findUnique({
+      where: { id: txId },
+    });
+
+    if (!updatedTx?.bawelComment) {
+      throw new BadRequestException('Gagal menghasilkan komentar dari Si Bawel.');
+    }
+
+    return updatedTx;
   }
 
   async getTransactions(userId: string, query: { month?: number; year?: number; category?: string; type?: string }) {
@@ -401,6 +439,20 @@ Format response (JSON only):
 
   // ── Receipt Scan ──
 
+  private extractJson(text: string): string {
+    const firstBracket = text.indexOf('[');
+    const lastBracket = text.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      return text.substring(firstBracket, lastBracket + 1);
+    }
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return text.substring(firstBrace, lastBrace + 1);
+    }
+    return text.trim();
+  }
+
   async scanReceipt(imageBase64: string, mimeType: string) {
     const prompt = `Kamu adalah OCR parser untuk struk belanja Indonesia.
 
@@ -423,7 +475,7 @@ Catatan:
     });
 
     try {
-      const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const cleaned = this.extractJson(result);
       return JSON.parse(cleaned);
     } catch {
       return { error: 'Gagal memproses struk', rawResponse: result };

@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
@@ -37,5 +37,10 @@ export class DashboardController {
   @Get('ai-briefing')
   getAiBriefing(@GetUser() user: User) {
     return this.svc.getAiBriefing(user);
+  }
+
+  @Post('ai-briefing')
+  generateAiBriefing(@GetUser() user: User) {
+    return this.svc.generateAiBriefing(user);
   }
 }

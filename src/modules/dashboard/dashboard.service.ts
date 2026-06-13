@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { User } from '@prisma/client';
 import { AiService } from '../ai/ai.service';
@@ -343,6 +343,85 @@ export class DashboardService {
    * a rule-based briefing built from the same gathered data, so it NEVER throws a 500.
    */
   async getAiBriefing(user: User) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const existing = await this.prisma.dailyBriefing.findUnique({
+      where: {
+        userId_date: {
+          userId: user.id,
+          date: todayStart,
+        },
+      },
+    });
+
+    if (!existing) {
+      return { exists: false };
+    }
+
+    try {
+      return JSON.parse(existing.content);
+    } catch {
+      return { exists: false };
+    }
+  }
+
+  async generateAiBriefing(user: User) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const existing = await this.prisma.dailyBriefing.findUnique({
+      where: {
+        userId_date: {
+          userId: user.id,
+          date: todayStart,
+        },
+      },
+    });
+
+    let hitCount = 0;
+    if (existing) {
+      try {
+        const parsedContent = JSON.parse(existing.content);
+        hitCount = parsedContent.hitCount ?? 0;
+      } catch (e) {
+        // Reset count if corrupted
+      }
+    }
+
+    if (hitCount >= 2) {
+      throw new BadRequestException(
+        'Batas harian pembuatan briefing AI telah tercapai (maksimal 2 kali sehari).',
+      );
+    }
+
+    const briefingResult = await this.fetchAndBuildBriefing(user);
+    const newHitCount = hitCount + 1;
+    const contentToStore = {
+      ...briefingResult,
+      hitCount: newHitCount,
+    };
+
+    await this.prisma.dailyBriefing.upsert({
+      where: {
+        userId_date: {
+          userId: user.id,
+          date: todayStart,
+        },
+      },
+      create: {
+        userId: user.id,
+        date: todayStart,
+        content: JSON.stringify(contentToStore),
+      },
+      update: {
+        content: JSON.stringify(contentToStore),
+      },
+    });
+
+    return contentToStore;
+  }
+
+  private async fetchAndBuildBriefing(user: User) {
     const now = new Date();
     const hour = now.getHours();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
