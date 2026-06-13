@@ -34,12 +34,16 @@ export class DuitTrackerController {
     @Query('year') year?: string,
     @Query('category') category?: string,
     @Query('type') type?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     return this.svc.getTransactions(user.id, {
       month: month ? parseInt(month) : undefined,
       year: year ? parseInt(year) : undefined,
       category,
       type,
+      startDate,
+      endDate,
     });
   }
 

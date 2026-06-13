@@ -147,10 +147,13 @@ export class DuitTrackerService {
     return updatedTx;
   }
 
-  async getTransactions(userId: string, query: { month?: number; year?: number; category?: string; type?: string }) {
+  async getTransactions(userId: string, query: { month?: number; year?: number; category?: string; type?: string; startDate?: string; endDate?: string }) {
     const where: any = { userId };
 
-    if (query.month && query.year) {
+    if (query.startDate && query.endDate) {
+      // Date range takes priority over month/year
+      where.date = { gte: new Date(query.startDate), lte: new Date(query.endDate + 'T23:59:59.999Z') };
+    } else if (query.month && query.year) {
       const start = new Date(query.year, query.month - 1, 1);
       const end = new Date(query.year, query.month, 0, 23, 59, 59, 999);
       where.date = { gte: start, lte: end };
