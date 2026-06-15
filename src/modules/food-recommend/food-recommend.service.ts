@@ -114,7 +114,7 @@ Response dalam JSON:
       const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const parsed = JSON.parse(cleaned);
 
-      // Save recommendation history
+      // Save recommendation history with full recipe data
       if (parsed.recipes?.length) {
         await Promise.all(
           parsed.recipes.map((recipe: any) =>
@@ -122,6 +122,8 @@ Response dalam JSON:
               data: {
                 userId,
                 recipeName: recipe.name,
+                recipeData: JSON.stringify(recipe),
+                sourceType: 'fridge',
                 budget: remaining,
               },
             }),
@@ -176,7 +178,7 @@ Response dalam JSON:
       const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const parsed = JSON.parse(cleaned);
 
-      // Save recommendation history
+      // Save recommendation history with full data
       if (parsed.recommendations?.length) {
         await Promise.all(
           parsed.recommendations.map((rec: any) =>
@@ -184,6 +186,8 @@ Response dalam JSON:
               data: {
                 userId,
                 recipeName: rec.name,
+                recipeData: JSON.stringify(rec),
+                sourceType: 'menu',
                 budget: rec.price ?? null,
               },
             }),

@@ -7,8 +7,7 @@ datasource db {
 }
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 // ==============================
@@ -81,7 +80,6 @@ model User {
   foodPreference         FoodPreference?
   splitBills             SplitBill[]
   notificationPref       NotificationPreference?
-  pushSubscriptions      PushSubscription[]
   todoCategories         TodoCategory[]
   receiptScans           ReceiptScan[]
   onboardingCompleted    Boolean                     @default(false)
@@ -94,6 +92,7 @@ model User {
   foodHistory            FoodRecommendationHistory[]
   profile                UserProfile?
   aiUsageLogs            AiUsageLog[]
+  pushSubscriptions      PushSubscription[]
 }
 
 model Class {
@@ -255,26 +254,14 @@ model PricingPlan {
   maxUploadPerMonth Int      @default(5)
   maxFileSizeMb     Int      @default(10)
   aiRequestLimit    Int      @default(10)
-  aiBriefingLimit   Int      @default(1) // max briefing generations per day
-  aiWeeklyRoastLimit Int     @default(1) // max weekly roast per week
+  aiBriefingLimit    Int      @default(1)
+  aiWeeklyRoastLimit Int      @default(1)
   features          String[] // e.g. ["class", "quiz", "schedule_parser", "pdf_export"]
   price             Float    @default(0)
   durationDays      Int      @default(0) // 0 = unlimited, 30 = 1 month, 365 = 1 year
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   users             User[]
-}
-
-// Tracking penggunaan fitur AI per user
-model AiUsageLog {
-  id        String   @id @default(uuid())
-  userId    String
-  feature   String   // e.g. "briefing", "weekly_roast", "chat_sibawel", "task_ai_solver"
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, feature, createdAt])
 }
 
 // ==============================
@@ -896,30 +883,11 @@ model NotificationPreference {
   forumReply       Boolean @default(true)
   qnaAnswer        Boolean @default(true)
   achievementAlert Boolean @default(true)
+  pushEnabled      Boolean @default(true)
   quietHoursStart  String?
   quietHoursEnd    String?
-  pushEnabled      Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-// ==============================
-// Push Subscriptions (Web Push)
-// ==============================
-
-model PushSubscription {
-  id        String   @id @default(uuid())
-  userId    String
-  endpoint  String
-  p256dh    String
-  auth      String
-  userAgent String?
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, endpoint])
-  @@index([userId])
 }
 
 // ==============================
@@ -1104,6 +1072,8 @@ model FoodRecommendationHistory {
   userId     String
   recipeName String
   budget     Float?
+  recipeData String?  @db.Text
+  sourceType String   @default("fridge")
   createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1131,3 +1101,38 @@ model UserProfile {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// ==============================
+// AI Usage Log
+// ==============================
+
+model AiUsageLog {
+  id        String   @id @default(uuid())
+  userId    String
+  feature   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, feature, createdAt])
+}
+
+// ==============================
+// Push Subscription
+// ==============================
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, endpoint])
+  @@index([userId])
+}
+

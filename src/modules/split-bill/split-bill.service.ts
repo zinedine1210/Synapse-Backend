@@ -12,14 +12,22 @@ export class SplitBillService {
   ) {}
 
   async scanReceipt(imageBase64: string, mimeType: string) {
-    const prompt = `Kamu adalah OCR parser untuk struk belanja Indonesia.
+    const prompt = `Kamu adalah OCR parser AHLI untuk struk/receipt belanja Indonesia.
 
-Dari foto struk ini, ekstrak informasi berikut dalam format JSON:
+INSTRUKSI PENTING:
+1. Baca SETIAP baris teks pada struk dari atas ke bawah
+2. Perhatikan SEMUA item, termasuk yang tulisannya kecil atau buram
+3. Jika ada "qty" atau "x" sebelum harga, itu menunjukkan jumlah item
+4. Harga biasanya di kolom paling kanan
+5. Perhatikan subtotal, pajak/tax/PPN, service charge, dan total
+6. Nama toko biasanya di baris paling atas dengan huruf besar
+
+Ekstrak dalam format JSON:
 {
   "storeName": "Nama Toko",
   "date": "2024-01-15",
   "items": [
-    { "name": "Nasi Goreng", "price": 25000, "quantity": 1 }
+    { "name": "Nasi Goreng", "price": 25000, "quantity": 2 }
   ],
   "subtotal": 75000,
   "tax": 7500,
@@ -27,23 +35,42 @@ Dari foto struk ini, ekstrak informasi berikut dalam format JSON:
   "paymentMethod": "Cash"
 }
 
-Catatan:
-- Harga dalam Rupiah (tanpa "Rp" prefix)
-- Quantity default 1 jika tidak tertera
-- Jika ada diskon, tampilkan harga setelah diskon
-- Jika struk tidak terbaca, return { "error": "Struk tidak terbaca" }`;
+Catatan parsing:
+- Harga dalam Rupiah (angka saja, tanpa "Rp" atau titik pemisah ribuan)
+- quantity default 1 jika tidak tertulis
+- Jika ada diskon per item, gunakan harga SETELAH diskon
+- Jika ada baris "2 x 15000 = 30000", maka qty=2, price=15000
+- Jika tax/PPN tidak ada, set tax: 0
+- paymentMethod: "Cash", "Debit", "Credit", "QRIS", "E-Wallet", atau "Unknown"
+- Jika struk tidak terbaca, return { "error": "Struk tidak terbaca" }
+- HANYA return JSON, tanpa teks lain`;
 
     const result = await this.ai.generateText(prompt, {
       imageBase64,
       mimeType,
+      maxResolution: 2048,
     });
 
     try {
-      const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const cleaned = this.extractJson(result);
       return JSON.parse(cleaned);
     } catch {
       return { error: 'Gagal memproses struk', rawResponse: result };
     }
+  }
+
+  private extractJson(text: string): string {
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return text.substring(firstBrace, lastBrace + 1);
+    }
+    const firstBracket = text.indexOf('[');
+    const lastBracket = text.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      return text.substring(firstBracket, lastBracket + 1);
+    }
+    return text.trim();
   }
 
   async createBill(userId: string, data: {
@@ -79,7 +106,8 @@ Catatan:
       this.prisma.splitBill.findMany({
         where,
         include: {
-          _count: { select: { items: true, participants: true } },
+          participants: true,
+          _count: { select: { items: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
