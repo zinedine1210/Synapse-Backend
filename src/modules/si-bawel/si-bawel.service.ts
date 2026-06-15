@@ -49,19 +49,40 @@ export class SiBawelService {
     // Get rich financial context
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [recentTx, monthTx, budgets, trees] = await Promise.all([
-      this.prisma.transaction.findMany({ where: { userId }, orderBy: { date: 'desc' }, take: 10 }),
-      this.prisma.transaction.findMany({ where: { userId, date: { gte: monthStart } } }),
-      this.prisma.categoryBudget.findMany({ where: { userId, month: now.getMonth() + 1, year: now.getFullYear() } }),
-      this.prisma.savingTree.findMany({ where: { userId }, take: 3 }),
+    const [recentTx, monthSums, categorySums, budgets, trees] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where: { userId },
+        select: { type: true, amount: true, category: true, label: true, date: true },
+        orderBy: { date: 'desc' },
+        take: 10,
+      }),
+      this.prisma.transaction.groupBy({
+        by: ['type'],
+        where: { userId, date: { gte: monthStart } },
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.groupBy({
+        by: ['category'],
+        where: { userId, type: 'expense', date: { gte: monthStart } },
+        _sum: { amount: true },
+      }),
+      this.prisma.categoryBudget.findMany({
+        where: { userId, month: now.getMonth() + 1, year: now.getFullYear() },
+        select: { category: true, amount: true },
+      }),
+      this.prisma.savingTree.findMany({
+        where: { userId },
+        select: { name: true, currentAmount: true, targetAmount: true },
+        take: 3,
+      }),
     ]);
 
-    const monthIncome = monthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const monthExpense = monthTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const monthIncome = monthSums.find(g => g.type === 'income')?._sum?.amount || 0;
+    const monthExpense = monthSums.find(g => g.type === 'expense')?._sum?.amount || 0;
 
     const byCategory: Record<string, number> = {};
-    monthTx.filter(t => t.type === 'expense').forEach(t => {
-      byCategory[t.category] = (byCategory[t.category] ?? 0) + t.amount;
+    categorySums.forEach(g => {
+      byCategory[g.category] = g._sum.amount || 0;
     });
 
     const budgetStatus = budgets.map(b => {
@@ -113,19 +134,29 @@ Max 4-5 kalimat.`;
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    const txs = await this.prisma.transaction.findMany({
-      where: { userId, date: { gte: oneWeekAgo } },
-    });
+    const weekWhere = { userId, date: { gte: oneWeekAgo } };
+    const [typeSums, categorySums, txCount, setting] = await Promise.all([
+      this.prisma.transaction.groupBy({
+        by: ['type'],
+        where: weekWhere,
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.groupBy({
+        by: ['category'],
+        where: { ...weekWhere, type: 'expense' },
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.count({ where: weekWhere }),
+      this.getSetting(userId),
+    ]);
 
-    const income = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const income = typeSums.find(g => g.type === 'income')?._sum?.amount || 0;
+    const expense = typeSums.find(g => g.type === 'expense')?._sum?.amount || 0;
 
     const byCategory: Record<string, number> = {};
-    txs.filter(t => t.type === 'expense').forEach(t => {
-      byCategory[t.category] = (byCategory[t.category] ?? 0) + t.amount;
+    categorySums.forEach(g => {
+      byCategory[g.category] = g._sum.amount || 0;
     });
-
-    const setting = await this.getSetting(userId);
 
     const prompt = `Kamu adalah "Si Bawel", asisten keuangan yang nyinyir.
 Level: ${setting.level}
@@ -135,7 +166,7 @@ Ringkasan keuangan minggu ini:
 - Total pengeluaran: Rp${expense.toLocaleString('id-ID')}
 - Saldo minggu ini: Rp${(income - expense).toLocaleString('id-ID')}
 - Breakdown pengeluaran: ${JSON.stringify(byCategory)}
-- Jumlah transaksi: ${txs.length}
+- Jumlah transaksi: ${txCount}
 
 Berikan "Weekly Roast" – evaluasi mingguan yang:
 1. Beri nilai 1-10 untuk pengelolaan keuangan minggu ini

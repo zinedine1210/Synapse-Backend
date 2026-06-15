@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Body, Param,
+  Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, ParseUUIDPipe,
 } from '@nestjs/common';
 import { SplitBillService } from './split-bill.service';
@@ -30,8 +30,10 @@ export class SplitBillController {
   }
 
   @Get()
-  getMyBills(@GetUser() user: User) {
-    return this.svc.getMyBills(user.id);
+  getMyBills(@GetUser() user: User, @Query('page') page?: string, @Query('limit') limit?: string) {
+    const p = Math.max(1, parseInt(page || '1', 10) || 1);
+    const l = Math.min(50, Math.max(1, parseInt(limit || '20', 10) || 20));
+    return this.svc.getMyBills(user.id, p, l);
   }
 
   @Post('detect-splittable')

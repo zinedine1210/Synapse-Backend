@@ -54,29 +54,38 @@ export class ForumService {
     );
   }
 
-  /** Ambil semua post dalam kelas (termasuk vote count) */
-  async getClassPosts(classId: string, userId: string, discussionId?: string | null) {
+  /** Ambil post dalam kelas (paginated, termasuk vote count) */
+  async getClassPosts(classId: string, userId: string, discussionId?: string | null, pagination?: { page?: number; limit?: number }) {
     await this.ensureMember(classId, userId);
 
-    const posts = await this.prisma.forumPost.findMany({
-      where: {
-        classId,
-        discussionId: discussionId === undefined ? null : discussionId,
-      },
-      include: {
-        author: { select: { id: true, fullName: true, avatarUrl: true } },
-        _count: { select: { replies: true, votes: true } },
-        votes: { where: { userId }, select: { value: true } },
-        attachments: { select: { id: true, fileName: true, fileUrl: true, fileType: true, fileSizeBytes: true, createdAt: true } },
-        poll: {
-          include: {
-            options: { include: { _count: { select: { votes: true } }, votes: { where: { userId }, select: { id: true } } }, orderBy: { order: 'asc' } },
+    const page = pagination?.page || 1;
+    const limit = pagination?.limit || 20;
+    const whereClause = {
+      classId,
+      discussionId: discussionId === undefined ? null : discussionId,
+    };
+
+    const [posts, total] = await Promise.all([
+      this.prisma.forumPost.findMany({
+        where: whereClause,
+        include: {
+          author: { select: { id: true, fullName: true, avatarUrl: true } },
+          _count: { select: { replies: true, votes: true } },
+          votes: { where: { userId }, select: { value: true } },
+          attachments: { select: { id: true, fileName: true, fileUrl: true, fileType: true, fileSizeBytes: true, createdAt: true } },
+          poll: {
+            include: {
+              options: { include: { _count: { select: { votes: true } }, votes: { where: { userId }, select: { id: true } } }, orderBy: { order: 'asc' } },
+            },
           },
+          reminder: { select: { id: true, remindAt: true, sent: true } },
         },
-        reminder: { select: { id: true, remindAt: true, sent: true } },
-      },
-      orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }],
-    });
+        orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.forumPost.count({ where: whereClause }),
+    ]);
 
     const postIds = posts.map((p) => p.id);
     const voteSums = await this.prisma.forumVote.groupBy({
@@ -86,7 +95,7 @@ export class ForumService {
     });
     const voteMap = new Map(voteSums.map((v) => [v.postId, v._sum.value || 0]));
 
-    return posts.map((p) => ({
+    const data = posts.map((p) => ({
       id: p.id,
       title: p.title,
       content: p.content,
@@ -109,6 +118,8 @@ export class ForumService {
       } : undefined,
       reminder: p.reminder || undefined,
     }));
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /** Buat post baru */

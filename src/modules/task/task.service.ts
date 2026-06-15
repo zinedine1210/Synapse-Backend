@@ -447,7 +447,7 @@ export class TaskService {
   private async solveFromBase64(base64: string, mimeType: string, context: string): Promise<string> {
     this.logger.log('Solving task question from image via Gemini vision...');
     try {
-      let prompt = 'Kamu adalah asisten belajar cerdas untuk mahasiswa. Analisis gambar soal berikut dan jawab SEMUA pertanyaan yang ada.\n\n';
+      let prompt = 'Kamu adalah asisten belajar cerdas untuk anak muda. Analisis gambar soal berikut dan jawab SEMUA pertanyaan yang ada.\n\n';
       if (context) {
         prompt += 'PERTAMA, cari jawaban dari konteks materi kuliah berikut:\n---\n' + context.slice(0, 8000) + '\n---\n\nJika jawabannya TIDAK ditemukan dalam konteks materi di atas, gunakan pengetahuan umummu untuk menjawab.\n\n';
       } else {

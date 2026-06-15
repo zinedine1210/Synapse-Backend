@@ -191,15 +191,22 @@ export class QnaService {
     return { viewCount: question.viewCount + 1 };
   }
 
-  async getMyQuestions(userId: string) {
-    return this.prisma.qnaQuestion.findMany({
-      where: { userId },
-      include: {
-        user: { select: { id: true, fullName: true, avatarUrl: true } },
-        _count: { select: { answers: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async getMyQuestions(userId: string, page = 1, limit = 20) {
+    const where = { userId };
+    const [data, total] = await Promise.all([
+      this.prisma.qnaQuestion.findMany({
+        where,
+        include: {
+          user: { select: { id: true, fullName: true, avatarUrl: true } },
+          _count: { select: { answers: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.qnaQuestion.count({ where }),
+    ]);
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async createAnswer(

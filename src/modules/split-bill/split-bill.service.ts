@@ -73,16 +73,21 @@ Catatan:
     });
   }
 
-  async getMyBills(userId: string) {
-    return this.prisma.splitBill.findMany({
-      where: { userId },
-      include: {
-        items: true,
-        participants: true,
-        _count: { select: { items: true, participants: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+  async getMyBills(userId: string, page = 1, limit = 20) {
+    const where = { userId };
+    const [data, total] = await Promise.all([
+      this.prisma.splitBill.findMany({
+        where,
+        include: {
+          _count: { select: { items: true, participants: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.splitBill.count({ where }),
+    ]);
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getBillById(userId: string, billId: string) {

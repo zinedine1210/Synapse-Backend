@@ -33,9 +33,13 @@ export class ForumController {
     @Param('classId', ParseUUIDPipe) classId: string,
     @GetUser() user: User,
     @Query('discussionId') discussionId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    // discussionId=undefined means "Umum" (null), discussionId=<uuid> means specific discussion
-    return this.forumService.getClassPosts(classId, user.id, discussionId || undefined);
+    return this.forumService.getClassPosts(classId, user.id, discussionId || undefined, {
+      page: page ? parseInt(page) : 1,
+      limit: limit ? Math.min(parseInt(limit), 50) : 20,
+    });
   }
 
   @Post('class/:classId')

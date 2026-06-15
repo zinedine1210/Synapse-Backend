@@ -70,7 +70,7 @@ export class AiService {
     this.logger.log('Memproses digitalisasi materi dengan Gemini...');
 
     let prompt = `
-Kamu adalah asisten akademik yang membantu mahasiswa mendigitalisasi materi kuliah.
+Kamu adalah asisten akademik yang membantu pengguna mendigitalisasi materi kuliah.
 Ubah teks berikut menjadi dokumen digital dalam format Markdown yang terstruktur, lengkap, dan mudah diolah.
 
 ATURAN PENTING:
@@ -197,7 +197,7 @@ ${summary.slice(0, 15000)}
     this.logger.log('Menyelesaikan soal dengan Gemini...');
 
     const prompt = `
-Kamu adalah asisten belajar cerdas untuk mahasiswa.
+Kamu adalah asisten belajar cerdas untuk anak muda.
 
 ${context ? `LANGKAH 1: Cari jawaban dari materi kuliah berikut:\n---\n${context.slice(0, 10000)}\n---\n\nLANGKAH 2: Jika jawabannya TIDAK ditemukan atau TIDAK lengkap dari materi di atas, gunakan pengetahuan umummu untuk melengkapi dan menjawab dengan lengkap. Jangan pernah bilang "tidak ada dalam materi" tanpa tetap memberikan jawaban.` : 'Gunakan pengetahuan umummu untuk menjawab pertanyaan berikut dengan lengkap.'}
 

@@ -64,7 +64,7 @@ export class ClassController {
     return this.classService.updateClass(id, user.id, dto);
   }
 
-  /** GET /api/v1/classes/:id/sessions – 16 pertemuan kelas */
+  /** GET /api/v1/classes/:id/sessions – pertemuan kelas */
   @Get(':id/sessions')
   getSessions(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User) {
     return this.classService.getClassSessions(id, user.id);

@@ -133,7 +133,7 @@ export class InsightService {
   async getAiInsight(userId: string) {
     const summary = await this.getWeeklySummary(userId);
 
-    const prompt = `Kamu adalah asisten keuangan & produktivitas untuk mahasiswa Indonesia.
+    const prompt = `Kamu adalah asisten keuangan & produktivitas untuk anak muda Indonesia.
 Berikan insight singkat (maks 3 paragraf) berdasarkan data minggu ini:
 
 Keuangan:
@@ -150,7 +150,7 @@ Produktivitas:
 Tabungan:
 ${summary.trees.map(t => `- ${t.name}: ${t.progress}% (sisa Rp ${t.remaining.toLocaleString('id-ID')})`).join('\n') || '- Belum ada pohon tabungan'}
 
-Berikan insight dalam bahasa gaul mahasiswa Indonesia, singkat, actionable.
+Berikan insight dalam bahasa gaul anak muda Indonesia, singkat, actionable.
 Format JSON: { "headline": "...", "body": "...", "tip": "..." }`;
 
     const result = await this.ai.generateText(prompt);

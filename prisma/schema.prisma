@@ -244,6 +244,7 @@ model Notification {
 
   @@index([userId])
   @@index([isRead])
+  @@index([userId, createdAt])
 }
 
 // Config kuota & akses fitur per plan (dikontrol dari Superadmin)
@@ -327,6 +328,7 @@ model ForumPost {
 
   @@index([classId])
   @@index([discussionId])
+  @@index([classId, discussionId, createdAt])
 }
 
 model ForumReply {
@@ -735,6 +737,7 @@ model QnaQuestion {
   @@index([userId])
   @@index([slug])
   @@index([status])
+  @@index([userId, createdAt])
 }
 
 model QnaAnswer {
@@ -850,6 +853,7 @@ model SplitBill {
   participants SplitParticipant[]
 
   @@index([userId])
+  @@index([userId, createdAt])
 }
 
 model SplitBillItem {
@@ -975,6 +979,7 @@ model QnaVote {
 
   @@unique([userId, answerId])
   @@index([answerId])
+  @@index([answerId, createdAt])
 }
 
 // ==============================

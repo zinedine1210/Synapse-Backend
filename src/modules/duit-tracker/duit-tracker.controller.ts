@@ -36,6 +36,8 @@ export class DuitTrackerController {
     @Query('type') type?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     return this.svc.getTransactions(user.id, {
       month: month ? parseInt(month) : undefined,
@@ -44,6 +46,8 @@ export class DuitTrackerController {
       type,
       startDate,
       endDate,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? Math.min(parseInt(limit), 100) : 30,
     });
   }
 

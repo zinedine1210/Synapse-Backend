@@ -28,17 +28,27 @@ export class TodoService {
     });
   }
 
-  async getAll(userId: string, query: { status?: string; priority?: string; category?: string }) {
+  async getAll(userId: string, query: { status?: string; priority?: string; category?: string; page?: number; limit?: number }) {
     const where: any = { userId };
     if (query.status) where.status = query.status;
     if (query.priority) where.priority = query.priority;
     if (query.category) where.category = query.category;
 
-    return this.prisma.personalTodo.findMany({
-      where,
-      include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
-      orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
-    });
+    const page = query.page || 1;
+    const limit = query.limit || 30;
+
+    const [data, total] = await Promise.all([
+      this.prisma.personalTodo.findMany({
+        where,
+        include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
+        orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.personalTodo.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getById(userId: string, id: string) {
@@ -211,6 +221,20 @@ Hanya respond JSON, tanpa markdown.`;
       where: { id: subId },
       data,
     });
+  }
+
+  async deleteSubtask(userId: string, todoId: string, subId: string) {
+    const todo = await this.prisma.personalTodo.findFirst({
+      where: { id: todoId, userId },
+    });
+    if (!todo) throw new NotFoundException('To-do tidak ditemukan.');
+
+    const subtask = await this.prisma.todoSubtask.findFirst({
+      where: { id: subId, todoId },
+    });
+    if (!subtask) throw new NotFoundException('Subtask tidak ditemukan.');
+
+    return this.prisma.todoSubtask.delete({ where: { id: subId } });
   }
 
   // ==============================

@@ -31,9 +31,11 @@ export class DashboardService {
           },
         },
       }),
-      // 2: This month's transactions for user
-      this.prisma.transaction.findMany({
+      // 2: This month's finance — use groupBy aggregate instead of loading all rows
+      this.prisma.transaction.groupBy({
+        by: ['type'],
         where: { userId: user.id, date: { gte: monthStart } },
+        _sum: { amount: true },
       }),
       // 3: Gamification profile
       this.prisma.userGamification.findUnique({ where: { userId: user.id } }),
@@ -41,7 +43,7 @@ export class DashboardService {
 
     const weeklyChallenge = results[0].status === 'fulfilled' ? results[0].value : null;
     const classMemberships = results[1].status === 'fulfilled' ? results[1].value : [];
-    const monthTx = results[2].status === 'fulfilled' ? results[2].value : [];
+    const financeSums = results[2].status === 'fulfilled' ? results[2].value : [];
     const gamification = results[3].status === 'fulfilled' ? results[3].value : null;
 
     // Class summary
@@ -52,13 +54,9 @@ export class DashboardService {
       role: cm.role,
     }));
 
-    // Financial summary
-    const expense = monthTx
-      .filter((t: any) => t.type === 'expense')
-      .reduce((s: number, t: any) => s + t.amount, 0);
-    const income = monthTx
-      .filter((t: any) => t.type === 'income')
-      .reduce((s: number, t: any) => s + t.amount, 0);
+    // Financial summary from aggregate
+    const income = (financeSums as any[]).find((g: any) => g.type === 'income')?._sum?.amount || 0;
+    const expense = (financeSums as any[]).find((g: any) => g.type === 'expense')?._sum?.amount || 0;
 
     // Class comparison indicator (whether user has classes with >= 5 members)
     const classesWithEnoughMembers = classSummary.filter((c: any) => c.memberCount >= 5);
@@ -261,13 +259,15 @@ export class DashboardService {
         orderBy: { deadline: 'asc' },
         take: 10,
       }),
-      // 2: Yesterday's spending (Transaction)
-      this.prisma.transaction.findMany({
+      // 2: Yesterday's spending aggregate (Transaction)
+      this.prisma.transaction.groupBy({
+        by: ['category'],
         where: {
           userId: user.id,
           type: 'expense',
           date: { gte: yesterdayStart, lt: todayStart },
         },
+        _sum: { amount: true },
       }),
       // 3: Today's pending todos (PersonalTodo)
       this.prisma.personalTodo.findMany({
@@ -286,7 +286,7 @@ export class DashboardService {
 
     const classMemberships = results[0].status === 'fulfilled' ? results[0].value : [];
     const deadlines = results[1].status === 'fulfilled' ? results[1].value : [];
-    const yesterdayTx = results[2].status === 'fulfilled' ? results[2].value : [];
+    const yesterdayGroups = results[2].status === 'fulfilled' ? results[2].value : [];
     const todayTodos = results[3].status === 'fulfilled' ? results[3].value : [];
 
     // Filter classes for today's schedule
@@ -300,11 +300,13 @@ export class DashboardService {
         lecturer: cm.class.lecturer || '-',
       }));
 
-    // Yesterday's spending summary
-    const yesterdayTotal = yesterdayTx.reduce((s: number, t: any) => s + t.amount, 0);
+    // Yesterday's spending summary from aggregates
     const yesterdayByCategory: Record<string, number> = {};
-    yesterdayTx.forEach((t: any) => {
-      yesterdayByCategory[t.category] = (yesterdayByCategory[t.category] || 0) + t.amount;
+    let yesterdayTotal = 0;
+    (yesterdayGroups as any[]).forEach((g: any) => {
+      const amt = g._sum.amount || 0;
+      yesterdayByCategory[g.category] = amt;
+      yesterdayTotal += amt;
     });
 
     // Today's todos
@@ -328,7 +330,7 @@ export class DashboardService {
       spending: {
         yesterdayTotal,
         yesterdayByCategory,
-        transactionCount: yesterdayTx.length,
+        transactionCount: (yesterdayGroups as any[]).length,
       },
       todos,
     };
@@ -658,7 +660,7 @@ export class DashboardService {
         : 'Tidak ada target tabungan aktif';
 
     const prompt = `
-Kamu adalah "Si Bawel", asisten pribadi yang ramah, cerdas, dan sedikit cerewet (witty) untuk seorang mahasiswa Indonesia bernama ${user.fullName}.
+Kamu adalah "Si Bawel", asisten pribadi yang ramah, cerdas, dan sedikit cerewet (witty) untuk seorang anak muda Indonesia bernama ${user.fullName}.
 Tugasmu membuat "Briefing Hari Ini" yang personal: rangkum hal-hal penting, beri saran yang actionable, kritik halus kalau perlu (misalnya kalau boros atau banyak tugas telat), dan ingatkan hal penting. Gaya bahasa santai khas anak kuliahan, hangat, tidak menggurui.
 
 KONTEKS HARI INI (${todayDayName}, waktu ${timeOfDay}):
@@ -1041,13 +1043,13 @@ ATURAN:
 
     // Level info for gamification
     const LEVELS = [
-      { level: 1, name: 'Mahasiswa Baru', minXp: 0 },
+      { level: 1, name: 'Pemula', minXp: 0 },
       { level: 2, name: 'Mulai Rajin', minXp: 100 },
       { level: 3, name: 'Konsisten', minXp: 300 },
       { level: 4, name: 'Produktif', minXp: 600 },
       { level: 5, name: 'Overachiever', minXp: 1000 },
       { level: 6, name: 'Synapse Pro', minXp: 1500 },
-      { level: 7, name: 'Legenda Kampus', minXp: 2500 },
+      { level: 7, name: 'Legenda', minXp: 2500 },
     ];
     const currentLevelInfo = gamification ? LEVELS.find(l => l.level === gamification.level) || LEVELS[0] : LEVELS[0];
     const nextLevelInfo = gamification ? LEVELS.find(l => l.level === (gamification.level || 1) + 1) : LEVELS[1];

@@ -15,13 +15,20 @@ export class BriefingService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Check cache
-    const existing = await this.prisma.dailyBriefing.findUnique({
+    // Check if today's briefing exists
+    const todayBriefing = await this.prisma.dailyBriefing.findUnique({
       where: { userId_date: { userId, date: today } },
     });
-    if (existing) return existing;
+    if (todayBriefing) return todayBriefing;
 
-    // Generate new briefing
+    // Fallback: return the most recent briefing (so it persists across days)
+    const latest = await this.prisma.dailyBriefing.findFirst({
+      where: { userId },
+      orderBy: { date: 'desc' },
+    });
+    if (latest) return latest;
+
+    // No briefing at all — generate one for today
     return this.generateBriefing(userId, today);
   }
 
@@ -61,7 +68,7 @@ export class BriefingService {
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
 
     // Gather data
-    const [todos, recentExpenses, classMemberships, trees, gamification, profile, monthlyExpenses, budgets] = await Promise.all([
+    const [todos, recentExpenses, classMemberships, trees, gamification, profile, monthlyCategorySums, budgets] = await Promise.all([
       // All pending todos with due dates
       this.prisma.personalTodo.findMany({
         where: { userId, status: 'pending' },
@@ -71,6 +78,7 @@ export class BriefingService {
       // Transactions in last 24 hours for top expenses
       this.prisma.transaction.findMany({
         where: { userId, date: { gte: last24h } },
+        select: { label: true, amount: true, type: true },
         orderBy: { amount: 'desc' },
         take: 50,
       }),
@@ -97,6 +105,7 @@ export class BriefingService {
       // Saving trees
       this.prisma.savingTree.findMany({
         where: { userId },
+        select: { name: true, currentAmount: true, targetAmount: true },
         take: 5,
       }),
       // Gamification (XP, streak, level)
@@ -107,13 +116,16 @@ export class BriefingService {
       this.prisma.userProfile.findUnique({
         where: { userId },
       }),
-      // Monthly total expenses
-      this.prisma.transaction.findMany({
+      // Monthly expense aggregates by category (replaces loading all rows)
+      this.prisma.transaction.groupBy({
+        by: ['category'],
         where: { userId, type: 'expense', date: { gte: monthStart, lt: monthEnd } },
+        _sum: { amount: true },
       }),
       // Category budgets for this month
       this.prisma.categoryBudget.findMany({
         where: { userId, month: today.getMonth() + 1, year: today.getFullYear() },
+        select: { category: true, amount: true },
       }),
     ]);
 
@@ -184,11 +196,13 @@ export class BriefingService {
       ? `Level ${gamification.level} | XP: ${gamification.totalXp} | Streak: ${gamification.currentStreak} hari | Longest: ${gamification.longestStreak} hari`
       : 'Belum ada data gamifikasi.';
 
-    // --- 8.7: Monthly spending overview ---
-    const monthlyTotal = monthlyExpenses.reduce((s, t) => s + t.amount, 0);
+    // --- 8.7: Monthly spending overview (from aggregates) ---
     const categorySpending: Record<string, number> = {};
-    for (const tx of monthlyExpenses) {
-      categorySpending[tx.category] = (categorySpending[tx.category] || 0) + tx.amount;
+    let monthlyTotal = 0;
+    for (const g of monthlyCategorySums as any[]) {
+      const amt = g._sum.amount || 0;
+      categorySpending[g.category] = amt;
+      monthlyTotal += amt;
     }
     const topCategories = Object.entries(categorySpending)
       .sort((a, b) => b[1] - a[1])
@@ -215,7 +229,7 @@ export class BriefingService {
       : '';
 
     // Build AI prompt with structured section markers for frontend parsing
-    const prompt = `Kamu adalah asisten pribadi yang ramah untuk mahasiswa. Buat briefing harian yang terstruktur dan personal.
+    const prompt = `Kamu adalah asisten pribadi yang ramah untuk anak muda. Buat briefing harian yang terstruktur dan personal.
 
 Data hari ini (${today.toLocaleDateString('id-ID')}, ${todayDayName}):
 

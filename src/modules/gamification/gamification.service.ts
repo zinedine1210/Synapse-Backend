@@ -25,13 +25,13 @@ const XP_REWARDS: Record<string, number> = {
 
 // Level thresholds
 const LEVELS = [
-  { level: 1, name: 'Mahasiswa Baru', minXp: 0 },
+  { level: 1, name: 'Pemula', minXp: 0 },
   { level: 2, name: 'Mulai Rajin', minXp: 100 },
   { level: 3, name: 'Konsisten', minXp: 300 },
   { level: 4, name: 'Produktif', minXp: 600 },
   { level: 5, name: 'Overachiever', minXp: 1000 },
   { level: 6, name: 'Synapse Pro', minXp: 1500 },
-  { level: 7, name: 'Legenda Kampus', minXp: 2500 },
+  { level: 7, name: 'Legenda', minXp: 2500 },
 ];
 
 // Achievement definitions
@@ -130,7 +130,7 @@ export class GamificationService {
         name: member?.user?.fullName || 'Unknown',
         totalXp: g.totalXp,
         level: g.level,
-        levelName: LEVELS.find((l) => l.level === g.level)?.name || 'Mahasiswa Baru',
+        levelName: LEVELS.find((l) => l.level === g.level)?.name || 'Pemula',
         currentStreak: g.currentStreak,
       };
     });

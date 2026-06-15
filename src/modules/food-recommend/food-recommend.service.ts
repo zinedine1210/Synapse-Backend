@@ -76,10 +76,10 @@ export class FoodRecommendService {
     const foodSpent = foodTx._sum.amount ?? 0;
     const remaining = foodBudget > 0 ? foodBudget - foodSpent : null;
 
-    const prompt = `Kamu adalah asisten masak untuk mahasiswa Indonesia.
+    const prompt = `Kamu adalah asisten masak untuk anak muda Indonesia.
 
 Dari foto kulkas/bahan makanan ini, identifikasi semua bahan yang terlihat.
-Lalu berikan 3 resep sederhana yang bisa dibuat mahasiswa.
+Lalu berikan 3 resep sederhana yang bisa dibuat anak muda.
 
 Preferensi user:
 - Bahan tidak disukai: ${pref.dislikedIngredients.join(', ') || 'tidak ada'}
@@ -141,7 +141,7 @@ Response dalam JSON:
   async recommendFromMenu(userId: string, imageBase64: string, mimeType: string, filter?: string) {
     const pref = await this.getPreference(userId);
 
-    const prompt = `Kamu adalah asisten makan hemat untuk mahasiswa Indonesia.
+    const prompt = `Kamu adalah asisten makan hemat untuk anak muda Indonesia.
 
 Dari foto menu restoran ini, baca semua item menu dan harganya.
 Lalu rekomendasikan 3-5 pilihan terbaik berdasarkan filter.

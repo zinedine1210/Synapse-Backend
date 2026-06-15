@@ -149,7 +149,7 @@ export class ClassService implements OnModuleInit {
     };
   }
 
-  /** Ambil daftar 16 sesi pertemuan sebuah kelas */
+  /** Ambil daftar sesi pertemuan sebuah kelas */
   async getClassSessions(classId: string, userId: string) {
     // Pastikan user adalah member kelas ini
     const member = await this.prisma.classMember.findUnique({

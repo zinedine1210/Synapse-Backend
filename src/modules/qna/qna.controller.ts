@@ -55,8 +55,10 @@ export class QnaController {
 
   @Get('questions/my')
   @UseGuards(AuthGuard)
-  getMyQuestions(@GetUser() user: User) {
-    return this.svc.getMyQuestions(user.id);
+  getMyQuestions(@GetUser() user: User, @Query('page') page?: string, @Query('limit') limit?: string) {
+    const p = Math.max(1, parseInt(page || '1', 10) || 1);
+    const l = Math.min(50, Math.max(1, parseInt(limit || '20', 10) || 20));
+    return this.svc.getMyQuestions(user.id, p, l);
   }
 
   /**

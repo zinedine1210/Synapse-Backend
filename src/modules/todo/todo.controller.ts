@@ -30,8 +30,14 @@ export class TodoController {
     @Query('status') status?: string,
     @Query('priority') priority?: string,
     @Query('category') category?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.svc.getAll(user.id, { status, priority, category });
+    return this.svc.getAll(user.id, {
+      status, priority, category,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? Math.min(parseInt(limit), 100) : 30,
+    });
   }
 
   @Get('stats')
@@ -95,6 +101,15 @@ export class TodoController {
     @Body() dto: UpdateSubtaskDto,
   ) {
     return this.svc.updateSubtask(user.id, id, subId, dto);
+  }
+
+  @Delete(':id/subtasks/:subId')
+  deleteSubtask(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('subId', ParseUUIDPipe) subId: string,
+  ) {
+    return this.svc.deleteSubtask(user.id, id, subId);
   }
 
   // ==============================
