@@ -25,7 +25,7 @@ export class GamificationController {
     return this.gamificationService.getHistory(
       userId,
       page ? parseInt(page) : 1,
-      limit ? parseInt(limit) : 20,
+      limit ? parseInt(limit) : 10,
     );
   }
 

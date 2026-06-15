@@ -131,19 +131,10 @@ export class TaskService {
         if (!description || !description.trim()) {
           try {
             const prompt = 'Kamu adalah asisten pendidikan. Analisis gambar soal/tugas berikut dan buat deskripsi ringkas dalam Bahasa Indonesia yang menjelaskan isi soal/tugas tersebut. Cukup deskripsi singkat saja (1-3 kalimat). Jangan jawab soalnya.';
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
-            const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-            const resp = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-goog-api-key': apiKey! },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }, { inline_data: { data: data.imageBase64, mime_type: data.imageMimeType } }] }],
-              }),
+            description = await this.aiService.generateText(prompt, {
+              imageBase64: data.imageBase64,
+              mimeType: data.imageMimeType,
             });
-            if (resp.ok) {
-              const json = await resp.json();
-              description = json.candidates?.[0]?.content?.parts?.[0]?.text || description;
-            }
           } catch (e) { this.logger.warn('AI description generation failed:', e); }
         }
         } // close else for size check
@@ -449,30 +440,16 @@ export class TaskService {
     try {
       let prompt = 'Kamu adalah asisten belajar cerdas untuk anak muda. Analisis gambar soal berikut dan jawab SEMUA pertanyaan yang ada.\n\n';
       if (context) {
-        prompt += 'PERTAMA, cari jawaban dari konteks materi kuliah berikut:\n---\n' + context.slice(0, 8000) + '\n---\n\nJika jawabannya TIDAK ditemukan dalam konteks materi di atas, gunakan pengetahuan umummu untuk menjawab.\n\n';
+        prompt += 'PERTAMA, cari jawaban dari konteks materi kuliah berikut:\n---\n' + context.slice(0, 6000) + '\n---\n\nJika jawabannya TIDAK ditemukan dalam konteks materi di atas, gunakan pengetahuan umummu untuk menjawab.\n\n';
       } else {
         prompt += 'Gunakan pengetahuan umummu untuk menjawab.\n\n';
       }
       prompt += 'Untuk setiap soal:\n- Jika pilihan ganda: tentukan jawaban yang benar beserta penjelasan lengkap\n- Jika essay: berikan jawaban lengkap dan terstruktur\n- Tulis jawaban secara rapi menggunakan heading dan bullet point\n\nFormat jawaban dalam Markdown yang rapi. Gunakan Bahasa Indonesia.';
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
-      const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-goog-api-key': apiKey! },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { data: base64, mime_type: mimeType } },
-            ],
-          }],
-        }),
+      return await this.aiService.generateText(prompt, {
+        imageBase64: base64,
+        mimeType,
       });
-
-      if (!resp.ok) throw new Error(`Gemini error ${resp.status}`);
-      const json = await resp.json();
-      return json.candidates?.[0]?.content?.parts?.[0]?.text ?? 'AI tidak dapat menjawab soal ini.';
     } catch (err) {
       this.logger.error('Failed to solve image question:', err);
       return 'Gagal memproses gambar soal. Coba lagi atau ketik manual.';

@@ -93,7 +93,7 @@ export class GamificationService {
     };
   }
 
-  async getHistory(userId: string, page = 1, limit = 20) {
+  async getHistory(userId: string, page = 1, limit = 10) {
     const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([
       this.prisma.xpTransaction.findMany({

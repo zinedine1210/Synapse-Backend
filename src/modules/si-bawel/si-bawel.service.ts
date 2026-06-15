@@ -25,7 +25,7 @@ export class SiBawelService {
     });
   }
 
-  async getComments(userId: string, page: number = 1, limit: number = 20) {
+  async getComments(userId: string, page: number = 1, limit: number = 10) {
     const where = { userId, bawelComment: { not: null } };
     const [comments, total] = await Promise.all([
       this.prisma.transaction.findMany({

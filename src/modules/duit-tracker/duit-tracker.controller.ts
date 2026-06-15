@@ -47,7 +47,7 @@ export class DuitTrackerController {
       startDate,
       endDate,
       page: page ? parseInt(page) : 1,
-      limit: limit ? Math.min(parseInt(limit), 100) : 30,
+      limit: limit ? Math.min(parseInt(limit), 100) : 10,
     });
   }
 

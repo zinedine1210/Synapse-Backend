@@ -177,10 +177,9 @@ export class MaterialService {
           const extractedImages = this.extractImagesFromPdfBuffer(fileBuffer);
           this.logger.log(`Berhasil mengekstrak ${extractedImages.length} gambar dari PDF ${materialId}`);
 
-          // Batasi maksimal 10 gambar
-          const limitImages = extractedImages.slice(0, 10);
-          for (let i = 0; i < limitImages.length; i++) {
-            const img = limitImages[i];
+          // Upload SEMUA gambar ke storage (agar tampil di materi)
+          for (let i = 0; i < extractedImages.length; i++) {
+            const img = extractedImages[i];
             const ext = img.mimeType === 'image/png' ? 'png' : 'jpg';
             const imgFileName = `extracted/${materialId}/image-${i + 1}-${Date.now()}.${ext}`;
 
@@ -209,7 +208,7 @@ export class MaterialService {
         if (!rawText || rawText.trim().length < 10) {
           rawText = 'Konten PDF tidak mengandung teks (kemungkinan hasil scan gambar).';
         }
-        rawText = rawText.slice(0, 50000);
+        rawText = rawText.slice(0, 30000);
 
         // Panggil AI dengan teks dan gambar
         summary = await this.aiService.summarizeMaterial(rawText, extractedImageUrls);
@@ -236,7 +235,7 @@ export class MaterialService {
         if (!rawText || rawText.trim().length < 10) {
           throw new Error('Teks yang diekstrak dari file terlalu pendek atau kosong.');
         }
-        rawText = rawText.slice(0, 50000);
+        rawText = rawText.slice(0, 30000);
         summary = await this.aiService.summarizeMaterial(rawText);
       }
 

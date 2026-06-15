@@ -35,7 +35,7 @@ export class TodoService {
     if (query.category) where.category = query.category;
 
     const page = query.page || 1;
-    const limit = query.limit || 30;
+    const limit = query.limit || 10;
 
     const [data, total] = await Promise.all([
       this.prisma.personalTodo.findMany({

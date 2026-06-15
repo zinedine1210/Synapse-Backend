@@ -38,7 +38,7 @@ export class ForumController {
   ) {
     return this.forumService.getClassPosts(classId, user.id, discussionId || undefined, {
       page: page ? parseInt(page) : 1,
-      limit: limit ? Math.min(parseInt(limit), 50) : 20,
+      limit: limit ? Math.min(parseInt(limit), 50) : 10,
     });
   }
 

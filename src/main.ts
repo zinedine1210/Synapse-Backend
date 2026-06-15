@@ -5,12 +5,35 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';
+import * as compression from 'compression';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // ─── Security Headers (Helmet) ────────────────────────────────────────────
-  app.use(helmet());
+  // ─── Security Headers (Helmet + CSP) ──────────────────────────────────────
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        connectSrc: ["'self'", 'https:'],
+        fontSrc: ["'self'", 'https:', 'data:'],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // Allow loading external images
+  }));
+
+  // ─── Response Compression (gzip) ──────────────────────────────────────────
+  app.use(compression());
+
+  // ─── Global Exception Filter ──────────────────────────────────────────────
+  // Prevents stack traces & internal details from leaking to clients
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // ─── Body Size Limit ──────────────────────────────────────────────────────
   // Dikurangi dari 50mb → 10mb untuk mencegah abuse via payload besar

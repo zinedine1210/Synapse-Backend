@@ -68,7 +68,7 @@ export class QnaService {
     limit?: number;
   }) {
     const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    const limit = query.limit ?? 10;
     const where: any = { isPublic: true };
 
     if (query.category) where.category = { has: query.category };
@@ -191,7 +191,7 @@ export class QnaService {
     return { viewCount: question.viewCount + 1 };
   }
 
-  async getMyQuestions(userId: string, page = 1, limit = 20) {
+  async getMyQuestions(userId: string, page = 1, limit = 10) {
     const where = { userId };
     const [data, total] = await Promise.all([
       this.prisma.qnaQuestion.findMany({

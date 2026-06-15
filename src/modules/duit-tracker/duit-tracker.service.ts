@@ -161,7 +161,7 @@ export class DuitTrackerService {
     if (query.type) where.type = query.type;
 
     const page = query.page || 1;
-    const limit = query.limit || 30;
+    const limit = query.limit || 10;
 
     const [data, total] = await Promise.all([
       this.prisma.transaction.findMany({

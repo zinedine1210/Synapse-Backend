@@ -1,5 +1,6 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { optimizeImageForAI, optimizeImagesForAI } from '../../common/image-optimizer';
 
 /**
  * AiService – Integrasi Google Gemini via REST API.
@@ -16,23 +17,27 @@ export class AiService {
     this.modelName = this.configService.get<string>('GEMINI_MODEL') ?? 'gemini-1.5-flash';
   }
 
-  private async callGemini(parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>): Promise<string> {
+  private async callGemini(parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>, maxOutputTokens?: number): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent`;
+    const body: any = {
+      contents: [{ parts }],
+      safetySettings: [
+        {
+          category: 'HARM_CATEGORY_HARASSMENT',
+          threshold: 'BLOCK_MEDIUM_AND_ABOVE',
+        },
+      ],
+    };
+    if (maxOutputTokens) {
+      body.generationConfig = { maxOutputTokens };
+    }
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-goog-api-key': this.apiKey,
       },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        safetySettings: [
-          {
-            category: 'HARM_CATEGORY_HARASSMENT',
-            threshold: 'BLOCK_MEDIUM_AND_ABOVE',
-          },
-        ],
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -51,7 +56,8 @@ export class AiService {
   async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string }): Promise<string> {
     const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [];
     if (options?.imageBase64 && options?.mimeType) {
-      parts.push({ inline_data: { mime_type: options.mimeType, data: options.imageBase64 } });
+      const optimized = await optimizeImageForAI(options.imageBase64, options.mimeType);
+      parts.push({ inline_data: { mime_type: optimized.mimeType, data: optimized.base64 } });
     }
     parts.push({ text: prompt });
     return this.callGemini(parts);
@@ -83,10 +89,13 @@ ATURAN PENTING:
     const parts: any[] = [];
 
     if (images && images.length > 0) {
+      // Optimize: compress + limit to 5 images max for token savings
+      const optimizedImages = await optimizeImagesForAI(images, 5);
+      
       prompt += `
 - KAMI TELAH MENGEKSTRAK GAMBAR-GAMBAR DARI DOKUMEN INI.
 - Di bawah ini adalah daftar Gambar yang diekstrak (diurutkan sesuai urutan kemunculannya):
-${images.map((img, idx) => `- Gambar ${idx + 1}: ${img.url}`).join('\n')}
+${optimizedImages.map((img, idx) => `- Gambar ${idx + 1}: ${(img as any).url || `image-${idx + 1}`}`).join('\n')}
 
 - TUGAS ANDA UNTUK GAMBAR:
   1. Lihat dan ANALISIS SECARA DETAIL setiap gambar yang disertakan dalam request ini.
@@ -103,8 +112,8 @@ ${images.map((img, idx) => `- Gambar ${idx + 1}: ${img.url}`).join('\n')}
       // Add text part first
       parts.push({ text: '' }); // we'll populate this later
       
-      // Add each image part
-      for (const img of images) {
+      // Add each optimized image part
+      for (const img of optimizedImages) {
         parts.push({
           inline_data: {
             mime_type: img.mimeType,
@@ -128,7 +137,7 @@ Format yang wajib digunakan:
 
 Teks materi:
 ---
-${rawText.slice(0, 50000)} 
+${rawText.slice(0, 30000)} 
 ---
 
 Hasilkan dalam Bahasa Indonesia. Digitalkan SELURUH konten, jangan disingkat.
@@ -199,7 +208,7 @@ ${summary.slice(0, 15000)}
     const prompt = `
 Kamu adalah asisten belajar cerdas untuk anak muda.
 
-${context ? `LANGKAH 1: Cari jawaban dari materi kuliah berikut:\n---\n${context.slice(0, 10000)}\n---\n\nLANGKAH 2: Jika jawabannya TIDAK ditemukan atau TIDAK lengkap dari materi di atas, gunakan pengetahuan umummu untuk melengkapi dan menjawab dengan lengkap. Jangan pernah bilang "tidak ada dalam materi" tanpa tetap memberikan jawaban.` : 'Gunakan pengetahuan umummu untuk menjawab pertanyaan berikut dengan lengkap.'}
+${context ? `LANGKAH 1: Cari jawaban dari materi kuliah berikut:\n---\n${context.slice(0, 6000)}\n---\n\nLANGKAH 2: Jika jawabannya TIDAK ditemukan atau TIDAK lengkap dari materi di atas, gunakan pengetahuan umummu untuk melengkapi dan menjawab dengan lengkap. Jangan pernah bilang "tidak ada dalam materi" tanpa tetap memberikan jawaban.` : 'Gunakan pengetahuan umummu untuk menjawab pertanyaan berikut dengan lengkap.'}
 
 Pertanyaan:
 <user_input>
@@ -245,14 +254,15 @@ Jika ada kolom/hari yang kosong atau bukan jadwal kuliah, abaikan.
     `.trim();
 
     try {
+      const optimized = await optimizeImageForAI(file.buffer, file.mimetype);
       const imagePart = {
         inline_data: {
-          data: file.buffer.toString('base64'),
-          mime_type: file.mimetype,
+          data: optimized.base64,
+          mime_type: optimized.mimeType,
         }, 
       };
 
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
+      const jsonText = await this.callGemini([{ text: prompt }, imagePart], 2048);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
@@ -305,7 +315,7 @@ Kembalikan HANYA array JSON valid (tanpa markdown code block) dengan format beri
 
 Materi:
 ---
-${materialsContext.slice(0, 30000)}
+${materialsContext.slice(0, 20000)}
 ---
     `.trim();
 
@@ -338,10 +348,11 @@ Kembalikan HANYA array JSON valid (tanpa markdown code block) dengan format beri
 ]
     `.trim();
 
+    const optimized = await optimizeImageForAI(base64, mimeType);
     const imagePart = {
       inline_data: {
-        data: base64,
-        mime_type: mimeType,
+        data: optimized.base64,
+        mime_type: optimized.mimeType,
       },
     };
 
@@ -393,15 +404,16 @@ Kembalikan HANYA array JSON berupa string pertanyaan:
 ]
     `.trim();
 
+    const optimized = await optimizeImageForAI(base64, mimeType);
     const imagePart = {
       inline_data: {
-        data: base64,
-        mime_type: mimeType,
+        data: optimized.base64,
+        mime_type: optimized.mimeType,
       },
     };
 
     try {
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
+      const jsonText = await this.callGemini([{ text: prompt }, imagePart], 2048);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {

@@ -36,7 +36,7 @@ export class TodoController {
     return this.svc.getAll(user.id, {
       status, priority, category,
       page: page ? parseInt(page) : 1,
-      limit: limit ? Math.min(parseInt(limit), 100) : 30,
+      limit: limit ? Math.min(parseInt(limit), 100) : 10,
     });
   }
 

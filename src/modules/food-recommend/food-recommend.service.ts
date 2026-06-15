@@ -221,7 +221,7 @@ Response dalam JSON:
 
   // === History ===
 
-  async getHistory(userId: string, limit = 20) {
+  async getHistory(userId: string, limit = 10) {
     return this.prisma.foodRecommendationHistory.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },

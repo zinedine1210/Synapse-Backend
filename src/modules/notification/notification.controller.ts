@@ -39,7 +39,7 @@ export class NotificationController {
   ) {
     return this.notificationService.getUserNotifications(user.id, {
       page: page ? parseInt(page) : 1,
-      limit: limit ? Math.min(parseInt(limit), 100) : 20,
+      limit: limit ? Math.min(parseInt(limit), 100) : 10,
       category: category || undefined,
     });
   }

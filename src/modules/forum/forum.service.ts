@@ -59,7 +59,7 @@ export class ForumService {
     await this.ensureMember(classId, userId);
 
     const page = pagination?.page || 1;
-    const limit = pagination?.limit || 20;
+    const limit = pagination?.limit || 10;
     const whereClause = {
       classId,
       discussionId: discussionId === undefined ? null : discussionId,
