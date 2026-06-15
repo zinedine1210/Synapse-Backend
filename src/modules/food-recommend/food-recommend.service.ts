@@ -108,6 +108,7 @@ Response dalam JSON:
     const result = await this.ai.generateText(prompt, {
       imageBase64,
       mimeType,
+      responseMimeType: 'application/json',
     });
 
     try {
@@ -172,6 +173,7 @@ Response dalam JSON:
     const result = await this.ai.generateText(prompt, {
       imageBase64,
       mimeType,
+      responseMimeType: 'application/json',
     });
 
     try {

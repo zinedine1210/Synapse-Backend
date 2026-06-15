@@ -17,7 +17,7 @@ export class AiService {
     this.modelName = this.configService.get<string>('GEMINI_MODEL') ?? 'gemini-1.5-flash';
   }
 
-  private async callGemini(parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>, maxOutputTokens?: number): Promise<string> {
+  private async callGemini(parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>, maxOutputTokens?: number, responseMimeType?: string): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent`;
     const body: any = {
       contents: [{ parts }],
@@ -28,8 +28,10 @@ export class AiService {
         },
       ],
     };
-    if (maxOutputTokens) {
-      body.generationConfig = { maxOutputTokens };
+    if (maxOutputTokens || responseMimeType) {
+      body.generationConfig = {};
+      if (maxOutputTokens) body.generationConfig.maxOutputTokens = maxOutputTokens;
+      if (responseMimeType) body.generationConfig.responseMimeType = responseMimeType;
     }
     const response = await fetch(url, {
       method: 'POST',
@@ -53,14 +55,14 @@ export class AiService {
   /**
    * General-purpose text generation. Used by Phase 1 features (Si Bawel, Briefing, etc.)
    */
-  async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string; maxResolution?: number }): Promise<string> {
+  async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string; maxResolution?: number; responseMimeType?: string }): Promise<string> {
     const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
     if (options?.imageBase64 && options?.mimeType) {
       const optimized = await optimizeImageForAI(options.imageBase64, options.mimeType, options.maxResolution);
       parts.push({ inlineData: { mimeType: optimized.mimeType, data: optimized.base64 } });
     }
     parts.push({ text: prompt });
-    return this.callGemini(parts);
+    return this.callGemini(parts, undefined, options?.responseMimeType);
   }
 
   /**
