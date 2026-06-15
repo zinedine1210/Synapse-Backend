@@ -2,9 +2,11 @@ import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
   UseGuards, ParseUUIDPipe, ParseIntPipe,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { DuitTrackerService } from './duit-tracker.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
+import { AiRateLimitGuard } from '../../common/guards/ai-rate-limit.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
@@ -130,11 +132,15 @@ export class DuitTrackerController {
   // ── AI Parse ──
 
   @Post('parse')
+  @UseGuards(AiRateLimitGuard)
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   parseNaturalInput(@GetUser() user: User, @Body('text') text: string) {
     return this.svc.parseNaturalInput(user.id, text);
   }
 
   @Post('scan-receipt')
+  @UseGuards(AiRateLimitGuard)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   scanReceipt(@GetUser() user: User, @Body() body: { base64: string; mimeType: string }) {
     return this.svc.scanReceipt(body.base64, body.mimeType);
   }

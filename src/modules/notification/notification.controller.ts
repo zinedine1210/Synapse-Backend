@@ -10,6 +10,7 @@ import {
   UseGuards,
   ParseUUIDPipe,
   Headers,
+  BadRequestException,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { WebPushService } from './web-push.service';
@@ -94,7 +95,7 @@ export class NotificationController {
     @Headers('user-agent') userAgent?: string,
   ) {
     if (!body?.subscription?.endpoint || !body?.subscription?.keys?.p256dh || !body?.subscription?.keys?.auth) {
-      return { error: 'Invalid subscription object' };
+      throw new BadRequestException('Invalid subscription object — endpoint, p256dh, dan auth wajib diisi.');
     }
     await this.webPushService.subscribe(user.id, body.subscription, userAgent);
     return { success: true };
@@ -110,7 +111,7 @@ export class NotificationController {
     @Body() body: { endpoint: string },
   ) {
     if (!body?.endpoint) {
-      return { error: 'Endpoint required' };
+      throw new BadRequestException('Endpoint wajib diisi.');
     }
     await this.webPushService.unsubscribe(user.id, body.endpoint);
     return { success: true };
