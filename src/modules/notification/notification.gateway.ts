@@ -7,6 +7,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { PrismaService } from '../../database/prisma.service';
 
 @WebSocketGateway({
   namespace: '/notifications',
@@ -21,6 +22,8 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
 
   private readonly logger = new Logger(NotificationGateway.name);
 
+  constructor(private readonly prisma: PrismaService) {}
+
   handleConnection(client: Socket) {
     this.logger.debug(`Notification client connected: ${client.id}`);
   }
@@ -30,10 +33,20 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
   }
 
   @SubscribeMessage('joinUser')
-  handleJoinUser(client: Socket, payload: { userId: string }) {
+  async handleJoinUser(client: Socket, payload: { userId: string }) {
     if (payload?.userId) {
       client.join(`user-${payload.userId}`);
       this.logger.debug(`Client ${client.id} joined user-${payload.userId}`);
+
+      // Immediately push current unread count on join
+      try {
+        const unreadCount = await this.prisma.notification.count({
+          where: { userId: payload.userId, isRead: false },
+        });
+        client.emit('unreadCount', { count: unreadCount });
+      } catch (e) {
+        this.logger.warn(`Failed to fetch unread count for ${payload.userId}`, e);
+      }
     }
   }
 

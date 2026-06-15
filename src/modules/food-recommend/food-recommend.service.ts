@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 
 @Injectable()
 export class FoodRecommendService {
+  private readonly logger = new Logger(FoodRecommendService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
@@ -111,11 +113,16 @@ Response dalam JSON:
       responseMimeType: 'application/json',
     });
 
+    let parsed: any;
     try {
       const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const parsed = JSON.parse(cleaned);
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return { detectedIngredients: [], recipes: [], rawResponse: result };
+    }
 
-      // Save recommendation history with full recipe data
+    // Save recommendation history (don't fail the response if this errors)
+    try {
       if (parsed.recipes?.length) {
         await Promise.all(
           parsed.recipes.map((recipe: any) =>
@@ -131,11 +138,11 @@ Response dalam JSON:
           ),
         );
       }
-
-      return parsed;
-    } catch {
-      return { detectedIngredients: [], recipes: [], rawResponse: result };
+    } catch (e) {
+      this.logger.warn('Failed to save fridge history', e);
     }
+
+    return parsed;
   }
 
   /**
@@ -176,11 +183,16 @@ Response dalam JSON:
       responseMimeType: 'application/json',
     });
 
+    let parsed: any;
     try {
       const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      const parsed = JSON.parse(cleaned);
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return { menuItems: [], recommendations: [], rawResponse: result };
+    }
 
-      // Save recommendation history with full data
+    // Save recommendation history (don't fail the response if this errors)
+    try {
       if (parsed.recommendations?.length) {
         await Promise.all(
           parsed.recommendations.map((rec: any) =>
@@ -196,11 +208,11 @@ Response dalam JSON:
           ),
         );
       }
-
-      return parsed;
-    } catch {
-      return { menuItems: [], recommendations: [], rawResponse: result };
+    } catch (e) {
+      this.logger.warn('Failed to save menu history', e);
     }
+
+    return parsed;
   }
 
   // === Favorites ===
