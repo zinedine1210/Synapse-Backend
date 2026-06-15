@@ -53,10 +53,10 @@ export class AiService {
   /**
    * General-purpose text generation. Used by Phase 1 features (Si Bawel, Briefing, etc.)
    */
-  async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string }): Promise<string> {
+  async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string; maxResolution?: number }): Promise<string> {
     const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [];
     if (options?.imageBase64 && options?.mimeType) {
-      const optimized = await optimizeImageForAI(options.imageBase64, options.mimeType);
+      const optimized = await optimizeImageForAI(options.imageBase64, options.mimeType, options.maxResolution);
       parts.push({ inline_data: { mime_type: optimized.mimeType, data: optimized.base64 } });
     }
     parts.push({ text: prompt });

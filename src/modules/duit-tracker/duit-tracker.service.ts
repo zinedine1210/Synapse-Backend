@@ -147,10 +147,11 @@ export class DuitTrackerService {
     return updatedTx;
   }
 
-  async getTransactions(userId: string, query: { month?: number; year?: number; category?: string; type?: string; startDate?: string; endDate?: string; page?: number; limit?: number }) {
+  async getTransactions(userId: string, query: { month?: number; year?: number; category?: string; type?: string; startDate?: string; endDate?: string }) {
     const where: any = { userId };
 
     if (query.startDate && query.endDate) {
+      // Date range takes priority over month/year
       where.date = { gte: new Date(query.startDate), lte: new Date(query.endDate + 'T23:59:59.999Z') };
     } else if (query.month && query.year) {
       const start = new Date(query.year, query.month - 1, 1);
@@ -160,20 +161,10 @@ export class DuitTrackerService {
     if (query.category) where.category = query.category;
     if (query.type) where.type = query.type;
 
-    const page = query.page || 1;
-    const limit = query.limit || 10;
-
-    const [data, total] = await Promise.all([
-      this.prisma.transaction.findMany({
-        where,
-        orderBy: { date: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.transaction.count({ where }),
-    ]);
-
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return this.prisma.transaction.findMany({
+      where,
+      orderBy: { date: 'desc' },
+    });
   }
 
   async deleteTransaction(userId: string, id: string) {
@@ -199,32 +190,28 @@ export class DuitTrackerService {
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0, 23, 59, 59, 999);
 
-    const dateWhere = { userId, date: { gte: start, lte: end } };
+    const txs = await this.prisma.transaction.findMany({
+      where: { userId, date: { gte: start, lte: end } },
+    });
 
-    // Use aggregates instead of loading all rows
-    const [typeSums, categorySums, txCount, budgets] = await Promise.all([
-      this.prisma.transaction.groupBy({
-        by: ['type'],
-        where: dateWhere,
-        _sum: { amount: true },
-      }),
-      this.prisma.transaction.groupBy({
-        by: ['category'],
-        where: { ...dateWhere, type: 'expense' },
-        _sum: { amount: true },
-      }),
-      this.prisma.transaction.count({ where: dateWhere }),
-      this.prisma.categoryBudget.findMany({ where: { userId, month, year } }),
-    ]);
+    const income = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
-    const income = typeSums.find(g => g.type === 'income')?._sum?.amount || 0;
-    const expense = typeSums.find(g => g.type === 'expense')?._sum?.amount || 0;
+    // Group by category
+    const byCategory: Record<string, number> = {};
+    txs.filter(t => t.type === 'expense').forEach(t => {
+      byCategory[t.category] = (byCategory[t.category] ?? 0) + t.amount;
+    });
 
-    const categoryReport = categorySums.map(g => {
-      const budget = budgets.find(b => b.category === g.category);
-      const spent = g._sum.amount || 0;
+    // Get budgets for comparison
+    const budgets = await this.prisma.categoryBudget.findMany({
+      where: { userId, month, year },
+    });
+
+    const categoryReport = Object.entries(byCategory).map(([category, spent]) => {
+      const budget = budgets.find(b => b.category === category);
       return {
-        category: g.category,
+        category,
         spent,
         budget: budget?.amount ?? null,
         percentage: budget ? Math.round((spent / budget.amount) * 100) : null,
@@ -237,7 +224,7 @@ export class DuitTrackerService {
       income,
       expense,
       balance: income - expense,
-      transactionCount: txCount,
+      transactionCount: txs.length,
       categoryReport,
     };
   }
@@ -393,29 +380,21 @@ Hanya respond JSON, tanpa markdown.`;
       // SANTAI mode: skip komentar untuk transaksi < 100K
       if (level === 'SANTAI' && dto.amount < 100000) return;
 
-      // Gather rich context using aggregates
+      // Gather rich context
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const catWhere = { userId, category: dto.category, type: dto.type, date: { gte: monthStart } };
-      const [categoryAgg, categoryCount, budgets, trees] = await Promise.all([
-        this.prisma.transaction.aggregate({
-          where: catWhere,
-          _sum: { amount: true },
+      const [categoryTxs, budgets, trees] = await Promise.all([
+        this.prisma.transaction.findMany({
+          where: { userId, category: dto.category, date: { gte: monthStart } },
         }),
-        this.prisma.transaction.count({ where: catWhere }),
         this.prisma.categoryBudget.findMany({
           where: { userId, month: now.getMonth() + 1, year: now.getFullYear() },
-          select: { category: true, amount: true },
         }),
-        this.prisma.savingTree.findMany({
-          where: { userId },
-          select: { currentAmount: true, targetAmount: true },
-          take: 1,
-          orderBy: { updatedAt: 'desc' },
-        }),
+        this.prisma.savingTree.findMany({ where: { userId }, take: 1, orderBy: { updatedAt: 'desc' } }),
       ]);
 
-      const categoryTotal = categoryAgg._sum.amount || 0;
+      const categoryTotal = categoryTxs.filter(t => t.type === dto.type).reduce((s, t) => s + t.amount, 0);
+      const categoryCount = categoryTxs.filter(t => t.type === dto.type).length;
       const catBudget = budgets.find(b => b.category === dto.category);
       const treeProgress = trees[0] ? Math.round((trees[0].currentAmount / trees[0].targetAmount) * 100) : null;
 

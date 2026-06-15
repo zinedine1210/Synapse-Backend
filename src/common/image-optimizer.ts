@@ -18,6 +18,7 @@ const logger = new Logger('ImageOptimizer');
 export async function optimizeImageForAI(
   input: Buffer | string,
   mimeType?: string,
+  maxResolution = 1024,
 ): Promise<{ buffer: Buffer; base64: string; mimeType: string }> {
   try {
     const inputBuffer = typeof input === 'string'
@@ -30,25 +31,26 @@ export async function optimizeImageForAI(
     const origHeight = metadata.height || 0;
     const origSize = inputBuffer.byteLength;
 
-    // Skip optimization if already small enough (< 100KB and < 1024px)
-    if (origSize < 100_000 && origWidth <= 1024 && origHeight <= 1024) {
+    // Skip optimization if already small enough
+    if (origSize < 100_000 && origWidth <= maxResolution && origHeight <= maxResolution) {
       const base64 = inputBuffer.toString('base64');
       return { buffer: inputBuffer, base64, mimeType: mimeType || 'image/jpeg' };
     }
 
-    // Resize to max 1024px on longest side, then compress as JPEG
+    // Resize to max resolution on longest side, then compress as JPEG
+    const quality = maxResolution > 1024 ? 90 : 80;
     const optimized = await sharp(inputBuffer)
-      .resize(1024, 1024, {
+      .resize(maxResolution, maxResolution, {
         fit: 'inside',
         withoutEnlargement: true, // Don't upscale small images
       })
-      .jpeg({ quality: 80, mozjpeg: true })
+      .jpeg({ quality, mozjpeg: true })
       .toBuffer();
 
     const ratio = ((1 - optimized.byteLength / origSize) * 100).toFixed(0);
     logger.log(
       `Image optimized: ${(origSize / 1024).toFixed(0)}KB → ${(optimized.byteLength / 1024).toFixed(0)}KB (-${ratio}%) ` +
-      `[${origWidth}x${origHeight} → max 1024px]`,
+      `[${origWidth}x${origHeight} → max ${maxResolution}px]`,
     );
 
     return {
