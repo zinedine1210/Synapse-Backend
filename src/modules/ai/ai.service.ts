@@ -17,7 +17,7 @@ export class AiService {
     this.modelName = this.configService.get<string>('GEMINI_MODEL') ?? 'gemini-1.5-flash';
   }
 
-  private async callGemini(parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>, maxOutputTokens?: number): Promise<string> {
+  private async callGemini(parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>, maxOutputTokens?: number): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent`;
     const body: any = {
       contents: [{ parts }],
@@ -54,10 +54,10 @@ export class AiService {
    * General-purpose text generation. Used by Phase 1 features (Si Bawel, Briefing, etc.)
    */
   async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string; maxResolution?: number }): Promise<string> {
-    const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [];
+    const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
     if (options?.imageBase64 && options?.mimeType) {
       const optimized = await optimizeImageForAI(options.imageBase64, options.mimeType, options.maxResolution);
-      parts.push({ inline_data: { mime_type: optimized.mimeType, data: optimized.base64 } });
+      parts.push({ inlineData: { mimeType: optimized.mimeType, data: optimized.base64 } });
     }
     parts.push({ text: prompt });
     return this.callGemini(parts);
@@ -115,8 +115,8 @@ ${optimizedImages.map((img, idx) => `- Gambar ${idx + 1}: ${(img as any).url || 
       // Add each optimized image part
       for (const img of optimizedImages) {
         parts.push({
-          inline_data: {
-            mime_type: img.mimeType,
+          inlineData: {
+            mimeType: img.mimeType,
             data: img.buffer.toString('base64'),
           },
         });
@@ -256,9 +256,9 @@ Jika ada kolom/hari yang kosong atau bukan jadwal kuliah, abaikan.
     try {
       const optimized = await optimizeImageForAI(file.buffer, file.mimetype);
       const imagePart = {
-        inline_data: {
+        inlineData: {
           data: optimized.base64,
-          mime_type: optimized.mimeType,
+          mimeType: optimized.mimeType,
         }, 
       };
 
@@ -350,9 +350,9 @@ Kembalikan HANYA array JSON valid (tanpa markdown code block) dengan format beri
 
     const optimized = await optimizeImageForAI(base64, mimeType);
     const imagePart = {
-      inline_data: {
+      inlineData: {
         data: optimized.base64,
-        mime_type: optimized.mimeType,
+        mimeType: optimized.mimeType,
       },
     };
 
@@ -406,9 +406,9 @@ Kembalikan HANYA array JSON berupa string pertanyaan:
 
     const optimized = await optimizeImageForAI(base64, mimeType);
     const imagePart = {
-      inline_data: {
+      inlineData: {
         data: optimized.base64,
-        mime_type: optimized.mimeType,
+        mimeType: optimized.mimeType,
       },
     };
 
@@ -441,9 +441,9 @@ Kembalikan HANYA objek JSON valid dengan struktur berikut:
     `.trim();
 
     const imagePart = {
-      inline_data: {
+      inlineData: {
         data: base64,
-        mime_type: mimeType,
+        mimeType: mimeType,
       },
     };
 
@@ -477,9 +477,9 @@ Pastikan mengembalikan HANYA array JSON valid dengan struktur objek seperti beri
     `.trim();
 
     const imagePart = {
-      inline_data: {
+      inlineData: {
         data: base64,
-        mime_type: mimeType,
+        mimeType: mimeType,
       },
     };
 
@@ -504,9 +504,9 @@ Jangan tambahkan komentar pembuka/penutup, kembalikan langsung teks hasil ekstra
     `.trim();
 
     const imagePart = {
-      inline_data: {
+      inlineData: {
         data: base64,
-        mime_type: mimeType,
+        mimeType: mimeType,
       },
     };
 
