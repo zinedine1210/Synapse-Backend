@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiUsageService } from '../../common/services/ai-usage.service';
+import { AiJobService } from '../ai-job/ai-job.service';
 
 @Injectable()
 export class BriefingService {
@@ -9,6 +10,7 @@ export class BriefingService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly aiUsage: AiUsageService,
+    private readonly aiJob: AiJobService,
   ) {}
 
   async getTodayBriefing(userId: string) {
@@ -307,6 +309,7 @@ ATURAN:
   }
 
   async refreshBriefing(userId: string) {
+    return this.aiJob.run(userId, 'briefing_refresh', async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -316,5 +319,6 @@ ATURAN:
     });
 
     return this.generateBriefing(userId, today);
+    }); // end aiJob.run
   }
 }

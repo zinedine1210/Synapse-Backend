@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { AiJobService } from '../ai-job/ai-job.service';
 
 @Injectable()
 export class FoodRecommendService {
@@ -9,6 +10,7 @@ export class FoodRecommendService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly aiJob: AiJobService,
   ) {}
 
   async getPreference(userId: string) {
@@ -60,6 +62,7 @@ export class FoodRecommendService {
    * Mode A: Foto kulkas — extract bahan, generate resep
    */
   async recommendFromFridge(userId: string, imageBase64: string, mimeType: string) {
+    return this.aiJob.run(userId, 'food_from_fridge', async () => {
     const pref = await this.getPreference(userId);
 
     // Get remaining food budget
@@ -143,12 +146,14 @@ Response dalam JSON:
     }
 
     return parsed;
+    }); // end aiJob.run
   }
 
   /**
    * Mode B: Foto menu restoran — parse item + filter
    */
   async recommendFromMenu(userId: string, imageBase64: string, mimeType: string, filter?: string) {
+    return this.aiJob.run(userId, 'food_from_menu', async () => {
     const pref = await this.getPreference(userId);
 
     const prompt = `Kamu adalah asisten makan hemat untuk anak muda Indonesia.
@@ -213,6 +218,7 @@ Response dalam JSON:
     }
 
     return parsed;
+    }); // end aiJob.run
   }
 
   // === Favorites ===

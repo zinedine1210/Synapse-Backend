@@ -1,6 +1,7 @@
 import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { AiJobService } from '../ai-job/ai-job.service';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
 import { AttemptQuizDto } from './dto/attempt-quiz.dto';
 import { User } from '@prisma/client';
@@ -12,6 +13,7 @@ export class QuizService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
+    private readonly aiJob: AiJobService,
   ) {}
 
   async generateQuiz(user: User, dto: GenerateQuizDto) {
@@ -48,6 +50,7 @@ export class QuizService {
       };
     }
 
+    return this.aiJob.run(user.id, 'generate_quiz', async () => {
     const questionsJson = await this.aiService.generateQuizQuestions(
       combinedSummary,
       dto.count ?? 10,
@@ -83,6 +86,7 @@ export class QuizService {
       quizzes: questions,
       quizIds: createdQuizzes.map((q) => q.id),
     };
+    }); // end aiJob.run
   }
 
   async submitAttempt(userId: string, dto: AttemptQuizDto) {

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { AiJobService } from '../ai-job/ai-job.service';
 import { SplitBillGateway } from './split-bill.gateway';
 
 @Injectable()
@@ -8,10 +9,12 @@ export class SplitBillService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly aiJob: AiJobService,
     private readonly splitBillGateway: SplitBillGateway,
   ) {}
 
-  async scanReceipt(imageBase64: string, mimeType: string) {
+  async scanReceipt(userId: string, imageBase64: string, mimeType: string) {
+    return this.aiJob.run(userId, 'split_bill_scan', async () => {
     const prompt = `Kamu adalah OCR parser AHLI untuk struk/receipt belanja Indonesia.
 
 INSTRUKSI PENTING:
@@ -57,6 +60,7 @@ Catatan parsing:
     } catch {
       return { error: 'Gagal memproses struk', rawResponse: result };
     }
+    }); // end aiJob.run
   }
 
   private extractJson(text: string): string {

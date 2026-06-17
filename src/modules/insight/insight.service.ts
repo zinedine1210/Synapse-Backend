@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { AiJobService } from '../ai-job/ai-job.service';
 
 @Injectable()
 export class InsightService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly aiJob: AiJobService,
   ) {}
 
   /**
@@ -131,6 +133,7 @@ export class InsightService {
    * Generate AI-powered insight text from weekly data
    */
   async getAiInsight(userId: string) {
+    return this.aiJob.run(userId, 'ai_insight', async () => {
     const summary = await this.getWeeklySummary(userId);
 
     const prompt = `Kamu adalah asisten keuangan & produktivitas untuk anak muda Indonesia.
@@ -162,5 +165,6 @@ Format JSON: { "headline": "...", "body": "...", "tip": "..." }`;
     } catch {
       return { ...summary, aiInsight: { headline: 'Insight minggu ini', body: result, tip: '' } };
     }
+    }); // end aiJob.run
   }
 }

@@ -132,7 +132,7 @@ export class DuitTrackerController {
 
   @Post('scan-receipt')
   scanReceipt(@GetUser() user: User, @Body() body: { base64: string; mimeType: string }) {
-    return this.svc.scanReceipt(body.base64, body.mimeType);
+    return this.svc.scanReceipt(user.id, body.base64, body.mimeType);
   }
 
   // ── Subscription Dismissal ──
@@ -140,5 +140,32 @@ export class DuitTrackerController {
   @Post('dismiss-subscription')
   dismissSubscription(@GetUser() user: User, @Body('pattern') pattern: string) {
     return this.svc.dismissSubscription(user.id, pattern);
+  }
+
+  // ── Debt/Hutang ──
+
+  @Get('debts')
+  getDebts(@GetUser() user: User, @Query('isPaid') isPaid?: string) {
+    return this.svc.getDebts(user.id, isPaid !== undefined ? isPaid === 'true' : undefined);
+  }
+
+  @Post('debts')
+  createDebt(@GetUser() user: User, @Body() dto: { description: string; amount: number; debtType: string; personName: string; dueDate?: string }) {
+    return this.svc.createDebt(user.id, dto);
+  }
+
+  @Patch('debts/:id')
+  updateDebt(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { description?: string; amount?: number; debtType?: string; personName?: string; dueDate?: string }) {
+    return this.svc.updateDebt(user.id, id, dto);
+  }
+
+  @Delete('debts/:id')
+  deleteDebt(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteDebt(user.id, id);
+  }
+
+  @Post('debts/:id/pay')
+  markDebtPaid(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.markDebtPaid(user.id, id);
   }
 }

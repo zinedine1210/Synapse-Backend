@@ -16,8 +16,8 @@ export class SplitBillController {
   constructor(private readonly svc: SplitBillService) {}
 
   @Post('scan-receipt')
-  scanReceipt(@Body() body: { imageBase64: string; mimeType: string }) {
-    return this.svc.scanReceipt(body.imageBase64, body.mimeType);
+  scanReceipt(@GetUser() user: User, @Body() body: { imageBase64: string; mimeType: string }) {
+    return this.svc.scanReceipt(user.id, body.imageBase64, body.mimeType);
   }
 
   @Post()

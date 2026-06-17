@@ -70,6 +70,7 @@ model User {
   categoryBudgets        CategoryBudget[]
   savingTrees            SavingTree[]
   bawelSetting           BawelSetting?
+  debts                  Debt[]
   personalTodos          PersonalTodo[]
   qnaQuestions           QnaQuestion[]
   qnaAnswers             QnaAnswer[]
@@ -92,6 +93,7 @@ model User {
   foodHistory            FoodRecommendationHistory[]
   profile                UserProfile?
   aiUsageLogs            AiUsageLog[]
+  aiJobs                 AiJob[]
   pushSubscriptions      PushSubscription[]
 }
 
@@ -666,6 +668,26 @@ model BawelSetting {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model Debt {
+  id                  String    @id @default(uuid())
+  userId              String
+  description         String
+  amount              Float
+  debtType            String // "owed_by_me" | "owed_to_me"
+  personName          String
+  dueDate             DateTime?
+  isPaid              Boolean   @default(false)
+  paidAt              DateTime?
+  linkedTransactionId String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isPaid])
+}
+
 model PersonalTodo {
   id           String    @id @default(uuid())
   userId       String
@@ -1115,6 +1137,27 @@ model AiUsageLog {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, feature, createdAt])
+}
+
+// ==============================
+// AI Job Tracking
+// ==============================
+
+model AiJob {
+  id          String    @id @default(uuid())
+  userId      String
+  jobType     String
+  status      String    @default("PROCESSING") // PROCESSING, COMPLETED, FAILED
+  result      String?   @db.Text
+  error       String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, jobType, status])
+  @@index([userId, jobType, createdAt])
 }
 
 // ==============================

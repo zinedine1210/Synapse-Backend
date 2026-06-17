@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { AiJobService } from '../ai-job/ai-job.service';
 import { NotificationService } from '../notification/notification.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -47,28 +48,96 @@ function parseAmountFromText(text: string): number | null {
   return null;
 }
 
-function ruleBasedParse(text: string): { amount: number; type: string; category: string; label: string } | null {
+const MONTH_MAP: Record<string, number> = {
+  'jan': 0, 'januari': 0, 'january': 0,
+  'feb': 1, 'februari': 1, 'february': 1,
+  'mar': 2, 'maret': 2, 'march': 2,
+  'apr': 3, 'april': 3,
+  'mei': 4, 'may': 4,
+  'jun': 5, 'juni': 5, 'june': 5,
+  'jul': 6, 'juli': 6, 'july': 6,
+  'agu': 7, 'agus': 7, 'agustus': 7, 'august': 7,
+  'sep': 8, 'sept': 8, 'september': 8,
+  'okt': 9, 'oktober': 9, 'october': 9,
+  'nov': 10, 'november': 10,
+  'des': 11, 'desember': 11, 'december': 11,
+};
+
+function parseDateFromText(text: string): string | null {
+  const lower = text.toLowerCase();
+  const now = new Date();
+
+  // "kemarin" / "yesterday"
+  if (/\bkemarin\b|\byesterday\b/.test(lower)) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  }
+
+  // "hari ini" / "today"
+  if (/\bhari ini\b|\btoday\b/.test(lower)) {
+    return now.toISOString().split('T')[0];
+  }
+
+  // "2 hari lalu" / "3 hari yang lalu"
+  const daysAgoMatch = lower.match(/(\d+)\s*hari\s*(lalu|yang lalu)/);
+  if (daysAgoMatch) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - parseInt(daysAgoMatch[1]));
+    return d.toISOString().split('T')[0];
+  }
+
+  // "tanggal 11 juni" / "tgl 11 juni" / "11 juni" / "11 jun"
+  const dateMonthMatch = lower.match(/(?:tanggal|tgl|tg)?\s*(\d{1,2})\s+(jan(?:uari)?|feb(?:ruari)?|mar(?:et)?|apr(?:il)?|mei|may|jun(?:i)?|jul(?:i)?|agu(?:stus)?|sep(?:t(?:ember)?)?|okt(?:ober)?|nov(?:ember)?|des(?:ember)?)/);
+  if (dateMonthMatch) {
+    const day = parseInt(dateMonthMatch[1]);
+    const monthKey = dateMonthMatch[2].toLowerCase();
+    const month = MONTH_MAP[monthKey] ?? MONTH_MAP[monthKey.slice(0, 3)];
+    if (month !== undefined) {
+      const year = month > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear();
+      const d = new Date(year, month, day);
+      return d.toISOString().split('T')[0];
+    }
+  }
+
+  // "11/6" / "11-6" (dd/mm)
+  const slashMatch = lower.match(/\b(\d{1,2})[\/\-](\d{1,2})\b/);
+  if (slashMatch) {
+    const day = parseInt(slashMatch[1]);
+    const month = parseInt(slashMatch[2]) - 1;
+    if (day >= 1 && day <= 31 && month >= 0 && month <= 11) {
+      const year = month > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear();
+      const d = new Date(year, month, day);
+      return d.toISOString().split('T')[0];
+    }
+  }
+
+  return null;
+}
+
+function ruleBasedParse(text: string): { amount: number; type: string; category: string; label: string; date?: string } | null {
   const amount = parseAmountFromText(text);
   if (!amount) return null;
 
   const lower = text.toLowerCase();
+  const date = parseDateFromText(text) || undefined;
 
   // Check income keywords first
   for (const [cat, keywords] of Object.entries(INCOME_KEYWORDS)) {
     if (keywords.some(kw => lower.includes(kw))) {
-      return { amount, type: 'income', category: cat, label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text };
+      return { amount, type: 'income', category: cat, label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text, date };
     }
   }
 
   // Check expense keywords
   for (const [cat, keywords] of Object.entries(EXPENSE_KEYWORDS)) {
     if (keywords.some(kw => lower.includes(kw))) {
-      return { amount, type: 'expense', category: cat, label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text };
+      return { amount, type: 'expense', category: cat, label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text, date };
     }
   }
 
   // Default: has amount but no keyword match
-  return { amount, type: 'expense', category: 'lainnya', label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text };
+  return { amount, type: 'expense', category: 'lainnya', label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text, date };
 }
 
 @Injectable()
@@ -76,6 +145,7 @@ export class DuitTrackerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly aiJob: AiJobService,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -110,6 +180,7 @@ export class DuitTrackerService {
   }
 
   async generateBawelCommentManual(userId: string, txId: string) {
+    return this.aiJob.run(userId, 'generate_comment', async () => {
     const tx = await this.prisma.transaction.findFirst({
       where: { id: txId, userId },
     });
@@ -145,6 +216,7 @@ export class DuitTrackerService {
     }
 
     return updatedTx;
+    }); // end aiJob.run
   }
 
   async getTransactions(userId: string, query: { month?: number; year?: number; category?: string; type?: string; startDate?: string; endDate?: string }) {
@@ -342,8 +414,10 @@ export class DuitTrackerService {
     }
 
     // Priority 2: AI parsing (jika rule tidak match)
+    return this.aiJob.run(userId, 'parse_transaction', async () => {
     const prompt = `Kamu adalah asisten keuangan. Parse input berikut menjadi transaksi keuangan.
 Input: "${text}"
+Hari ini: ${new Date().toISOString().split('T')[0]}
 
 Kategori expense: makanan, minuman, transportasi, belanja, hiburan, tagihan, kesehatan, pendidikan, kos, lainnya
 Kategori income: gaji, freelance, kiriman, beasiswa, bonus, jualan, lainnya
@@ -354,7 +428,8 @@ Respond dalam JSON format:
   "type": "income" | "expense",
   "category": string,
   "label": string (deskripsi singkat Bahasa Indonesia),
-  "note": string | null
+  "note": string | null,
+  "date": string | null (format YYYY-MM-DD, null jika tidak disebutkan. Deteksi: "kemarin", "tanggal 11 juni", "2 hari lalu", dll)
 }
 
 Hanya respond JSON, tanpa markdown.`;
@@ -366,6 +441,7 @@ Hanya respond JSON, tanpa markdown.`;
     } catch {
       return { raw: result, parsedBy: 'failed' };
     }
+    }); // end aiJob.run
   }
 
   // ── AI: Si Bawel comment ──
@@ -456,7 +532,8 @@ Format response (JSON only):
     return text.trim();
   }
 
-  async scanReceipt(imageBase64: string, mimeType: string) {
+  async scanReceipt(userId: string, imageBase64: string, mimeType: string) {
+    return this.aiJob.run(userId, 'scan_receipt', async () => {
     const prompt = `Kamu adalah OCR parser untuk struk belanja Indonesia.
 
 Dari foto struk ini, ekstrak setiap item transaksi dalam format JSON array:
@@ -483,6 +560,7 @@ Catatan:
     } catch {
       return { error: 'Gagal memproses struk', rawResponse: result };
     }
+    }); // end aiJob.run
   }
 
   // ── Budget Alert ──
@@ -548,5 +626,77 @@ Catatan:
       update: {},
       create: { userId, pattern },
     });
+  }
+
+  // ── Debt/Hutang ──
+
+  async getDebts(userId: string, isPaid?: boolean) {
+    const where: any = { userId };
+    if (isPaid !== undefined) where.isPaid = isPaid;
+    return this.prisma.debt.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createDebt(userId: string, dto: { description: string; amount: number; debtType: string; personName: string; dueDate?: string }) {
+    return this.prisma.debt.create({
+      data: {
+        userId,
+        description: dto.description,
+        amount: dto.amount,
+        debtType: dto.debtType,
+        personName: dto.personName,
+        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+      },
+    });
+  }
+
+  async updateDebt(userId: string, debtId: string, dto: { description?: string; amount?: number; debtType?: string; personName?: string; dueDate?: string }) {
+    const debt = await this.prisma.debt.findFirst({ where: { id: debtId, userId } });
+    if (!debt) throw new NotFoundException('Hutang tidak ditemukan');
+    return this.prisma.debt.update({
+      where: { id: debtId },
+      data: {
+        ...(dto.description && { description: dto.description }),
+        ...(dto.amount && { amount: dto.amount }),
+        ...(dto.debtType && { debtType: dto.debtType }),
+        ...(dto.personName && { personName: dto.personName }),
+        ...(dto.dueDate !== undefined && { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }),
+      },
+    });
+  }
+
+  async deleteDebt(userId: string, debtId: string) {
+    const debt = await this.prisma.debt.findFirst({ where: { id: debtId, userId } });
+    if (!debt) throw new NotFoundException('Hutang tidak ditemukan');
+    return this.prisma.debt.delete({ where: { id: debtId } });
+  }
+
+  async markDebtPaid(userId: string, debtId: string) {
+    const debt = await this.prisma.debt.findFirst({ where: { id: debtId, userId } });
+    if (!debt) throw new NotFoundException('Hutang tidak ditemukan');
+    if (debt.isPaid) throw new BadRequestException('Hutang sudah lunas');
+
+    // Create a transaction for the debt payment
+    const type = debt.debtType === 'owed_by_me' ? 'expense' : 'income';
+    const tx = await this.prisma.transaction.create({
+      data: {
+        userId,
+        amount: debt.amount,
+        type,
+        category: 'hutang',
+        label: `Bayar hutang: ${debt.description} (${debt.personName})`,
+        note: `Pelunasan hutang`,
+        date: new Date(),
+      },
+    });
+
+    await this.prisma.debt.update({
+      where: { id: debtId },
+      data: { isPaid: true, paidAt: new Date(), linkedTransactionId: tx.id },
+    });
+
+    return { debt: { ...debt, isPaid: true, paidAt: new Date(), linkedTransactionId: tx.id }, transaction: tx };
   }
 }

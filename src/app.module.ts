@@ -30,6 +30,7 @@ import { SplitBillModule } from './modules/split-bill/split-bill.module';
 import { InsightModule } from './modules/insight/insight.module';
 import { SearchModule } from './modules/search/search.module';
 import { ProfileModule } from './modules/profile/profile.module';
+import { AiJobModule } from './modules/ai-job/ai-job.module';
 import { validateEnv } from './config/env.validation';
 
 @Module({
@@ -54,6 +55,7 @@ import { validateEnv } from './config/env.validation';
 
     // ─── Core Modules ─────────────────────────────────────────────────────────
     DatabaseModule,
+    AiJobModule,
     AuthModule,
     ClassModule,
     SessionModule,

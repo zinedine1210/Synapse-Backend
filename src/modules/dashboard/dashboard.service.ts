@@ -2,12 +2,14 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { User } from '@prisma/client';
 import { AiService } from '../ai/ai.service';
+import { AiJobService } from '../ai-job/ai-job.service';
 
 @Injectable()
 export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly aiJob: AiJobService,
   ) {}
 
   /**
@@ -404,6 +406,7 @@ export class DashboardService {
       );
     }
 
+    return this.aiJob.run(user.id, 'ai_briefing', async () => {
     const briefingResult = await this.fetchAndBuildBriefing(user);
     const newHitCount = hitCount + 1;
     const contentToStore = {
@@ -429,6 +432,7 @@ export class DashboardService {
     });
 
     return contentToStore;
+    }); // end aiJob.run
   }
 
   private async fetchAndBuildBriefing(user: User) {

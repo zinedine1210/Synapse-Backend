@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { AiJobService } from '../ai-job/ai-job.service';
 import { CreatePredictionDto } from './dto/create-prediction.dto';
 import { GeneratePredictionDto } from './dto/generate-prediction.dto';
 
@@ -11,6 +12,7 @@ export class ExamPredictionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
+    private readonly aiJob: AiJobService,
   ) {}
 
   private hasPermission(member: any, perm: string): boolean {
@@ -122,6 +124,7 @@ export class ExamPredictionService {
     }
 
     // Panggil AI Service
+    return this.aiJob.run(userId, 'exam_prediction', async () => {
     const questions = await this.aiService.generateExamPrediction(
       context,
       dto.type,
@@ -151,6 +154,7 @@ export class ExamPredictionService {
       },
       include: { questions: true },
     });
+    }); // end aiJob.run
   }
 
   /** Ekstrak prediksi dari foto kisi-kisi */
@@ -169,6 +173,7 @@ export class ExamPredictionService {
       throw new ForbiddenException('Anda tidak memiliki izin untuk mengunggah prediksi ujian.');
     }
 
+    return this.aiJob.run(userId, 'exam_upload_image', async () => {
     const questions = await this.aiService.extractExamFromImage(dto.base64, dto.mimeType);
 
     return this.prisma.examPrediction.create({
@@ -192,6 +197,7 @@ export class ExamPredictionService {
       },
       include: { questions: true },
     });
+    }); // end aiJob.run
   }
 
   /** Hapus prediksi ujian */
