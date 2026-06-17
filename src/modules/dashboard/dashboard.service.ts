@@ -347,24 +347,29 @@ export class DashboardService {
    * a rule-based briefing built from the same gathered data, so it NEVER throws a 500.
    */
   async getAiBriefing(user: User) {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const existing = await this.prisma.dailyBriefing.findUnique({
-      where: {
-        userId_date: {
-          userId: user.id,
-          date: todayStart,
-        },
-      },
-    });
-
-    if (!existing) {
-      return { exists: false };
-    }
-
     try {
-      return JSON.parse(existing.content);
-    } catch {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const existing = await this.prisma.dailyBriefing.findUnique({
+        where: {
+          userId_date: {
+            userId: user.id,
+            date: todayStart,
+          },
+        },
+      });
+
+      if (!existing) {
+        return { exists: false };
+      }
+
+      try {
+        return JSON.parse(existing.content);
+      } catch {
+        return { exists: false };
+      }
+    } catch (error) {
+      // If DB query fails (e.g. connection issue), return graceful fallback
       return { exists: false };
     }
   }

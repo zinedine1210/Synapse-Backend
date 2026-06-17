@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiUsageService } from '../../common/services/ai-usage.service';
@@ -7,6 +7,8 @@ import { UpdateBawelSettingDto } from './dto/update-setting.dto';
 
 @Injectable()
 export class SiBawelService {
+  private readonly logger = new Logger(SiBawelService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
@@ -125,49 +127,63 @@ Jika user tanya tentang keuangan, berikan saran praktis berdasarkan data di atas
 Selalu sebut angka nyata jika relevan.
 Max 4-5 kalimat.`;
 
-    const reply = await this.ai.generateText(prompt);
+    const reply = await this.ai.generateText(prompt).catch(() =>
+      'Aduh, aku lagi nge-lag nih. Coba tanya lagi nanti ya~ 😅',
+    );
     return { reply };
   }
 
   async getWeeklyRoast(userId: string) {
-    // Check AI usage limit
-    await this.aiUsage.checkAndRecord(userId, 'weekly_roast');
+    try {
+      // Check AI usage limit (graceful — skip if service unavailable)
+      await this.aiUsage.checkAndRecord(userId, 'weekly_roast');
+    } catch (error: any) {
+      // Let ForbiddenException (limit exceeded) pass through as 403
+      if (error?.status === 403) throw error;
+      // Any other error (DB issues, missing table) — log and continue without usage tracking
+      this.logger.warn(`checkAndRecord failed for weekly_roast: ${error?.message}`);
+    }
 
-    return this.aiJob.run(userId, 'weekly_roast', async () => {
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    try {
+      return await this.aiJob.run(userId, 'weekly_roast', async () => {
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    const weekWhere = { userId, date: { gte: oneWeekAgo } };
-    const [typeSums, categorySums, txCount, setting] = await Promise.all([
-      this.prisma.transaction.groupBy({
-        by: ['type'],
-        where: weekWhere,
-        _sum: { amount: true },
-      }),
-      this.prisma.transaction.groupBy({
-        by: ['category'],
-        where: { ...weekWhere, type: 'expense' },
-        _sum: { amount: true },
-      }),
-      this.prisma.transaction.count({ where: weekWhere }),
-      this.getSetting(userId),
-    ]);
+        const weekWhere = { userId, date: { gte: oneWeekAgo } };
+        const [typeSums, categorySums, txCount, setting] = await Promise.all([
+          this.prisma.transaction.groupBy({
+            by: ['type'],
+            where: weekWhere,
+            _sum: { amount: true },
+          }),
+          this.prisma.transaction.groupBy({
+            by: ['category'],
+            where: { ...weekWhere, type: 'expense' },
+            _sum: { amount: true },
+          }),
+          this.prisma.transaction.count({ where: weekWhere }),
+          this.getSetting(userId),
+        ]);
 
-    const income = typeSums.find(g => g.type === 'income')?._sum?.amount || 0;
-    const expense = typeSums.find(g => g.type === 'expense')?._sum?.amount || 0;
+        const income = typeSums.find(g => g.type === 'income')?._sum?.amount || 0;
+        const expense = typeSums.find(g => g.type === 'expense')?._sum?.amount || 0;
 
-    const byCategory: Record<string, number> = {};
-    categorySums.forEach(g => {
-      byCategory[g.category] = g._sum.amount || 0;
-    });
+        const byCategory: Record<string, number> = {};
+        categorySums.forEach(g => {
+          byCategory[g.category] = g._sum.amount || 0;
+        });
 
-    const prompt = `Kamu adalah "Si Bawel", asisten keuangan yang nyinyir.
+        if (txCount === 0) {
+          return { score: 0, roast: 'Belum ada transaksi minggu ini. Mulai catat pengeluaranmu biar bisa di-roast! 😤', tip: 'Catat minimal 1 transaksi per hari.', biggestSpend: '-' };
+        }
+
+        const prompt = `Kamu adalah "Si Bawel", asisten keuangan yang nyinyir.
 Level: ${setting.level}
 
 Ringkasan keuangan minggu ini:
-- Total pemasukan: Rp${income.toLocaleString('id-ID')}
-- Total pengeluaran: Rp${expense.toLocaleString('id-ID')}
-- Saldo minggu ini: Rp${(income - expense).toLocaleString('id-ID')}
+- Total pemasukan: Rp${Number(income).toLocaleString('id-ID')}
+- Total pengeluaran: Rp${Number(expense).toLocaleString('id-ID')}
+- Saldo minggu ini: Rp${Number(Number(income) - Number(expense)).toLocaleString('id-ID')}
 - Breakdown pengeluaran: ${JSON.stringify(byCategory)}
 - Jumlah transaksi: ${txCount}
 
@@ -180,12 +196,32 @@ Berikan "Weekly Roast" – evaluasi mingguan yang:
 Format response (JSON):
 { "score": number, "roast": "...", "tip": "...", "biggestSpend": "kategori" }`;
 
-    const result = await this.ai.generateText(prompt);
-    try {
-      return JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
-    } catch {
-      return { score: 5, roast: result, tip: '', biggestSpend: '' };
+        try {
+          const result = await this.ai.generateText(prompt);
+          const parsed = JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+          return parsed;
+        } catch {
+          // Fallback if AI fails
+          const topCategory = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
+          return {
+            score: Number(expense) > Number(income) ? 4 : 7,
+            roast: `Minggu ini pengeluaranmu Rp${Number(expense).toLocaleString('id-ID')} dari ${txCount} transaksi. ${topCategory ? `Paling boros di ${topCategory[0]}.` : ''} Atur lagi ya!`,
+            tip: 'Coba kurangi pengeluaran di kategori terbesar minggu depan.',
+            biggestSpend: topCategory?.[0] || '-',
+          };
+        }
+      }); // end aiJob.run
+    } catch (error: any) {
+      // ConflictException (409) = already processing → let it pass through
+      if (error?.status === 409) throw error;
+      // Any other unhandled error → log and return fallback
+      this.logger.error(`getWeeklyRoast failed: ${error?.message}`, error?.stack);
+      return {
+        score: 0,
+        roast: 'Maaf, Weekly Roast sedang tidak tersedia. Coba lagi nanti ya~ 🙏',
+        tip: 'Coba lagi dalam beberapa menit.',
+        biggestSpend: '-',
+      };
     }
-    }); // end aiJob.run
   }
 }

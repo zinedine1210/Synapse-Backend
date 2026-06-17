@@ -48,11 +48,16 @@ Catatan parsing:
 - Jika struk tidak terbaca, return { "error": "Struk tidak terbaca" }
 - HANYA return JSON, tanpa teks lain`;
 
-    const result = await this.ai.generateText(prompt, {
-      imageBase64,
-      mimeType,
-      maxResolution: 2048,
-    });
+    let result: string;
+    try {
+      result = await this.ai.generateText(prompt, {
+        imageBase64,
+        mimeType,
+        maxResolution: 2048,
+      });
+    } catch {
+      return { error: 'AI tidak tersedia saat ini. Coba lagi nanti.' };
+    }
 
     try {
       const cleaned = this.extractJson(result);

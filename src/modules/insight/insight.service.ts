@@ -156,7 +156,12 @@ ${summary.trees.map(t => `- ${t.name}: ${t.progress}% (sisa Rp ${t.remaining.toL
 Berikan insight dalam bahasa gaul anak muda Indonesia, singkat, actionable.
 Format JSON: { "headline": "...", "body": "...", "tip": "..." }`;
 
-    const result = await this.ai.generateText(prompt);
+    let result: string;
+    try {
+      result = await this.ai.generateText(prompt);
+    } catch {
+      return { ...summary, aiInsight: { headline: 'Insight minggu ini', body: 'AI sedang tidak tersedia. Coba lagi nanti.', tip: '' } };
+    }
 
     try {
       const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();

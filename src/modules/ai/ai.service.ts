@@ -1,4 +1,4 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { optimizeImageForAI, optimizeImagesForAI } from '../../common/image-optimizer';
 
@@ -33,23 +33,49 @@ export class AiService {
       if (maxOutputTokens) body.generationConfig.maxOutputTokens = maxOutputTokens;
       if (responseMimeType) body.generationConfig.responseMimeType = responseMimeType;
     }
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-goog-api-key': this.apiKey,
-      },
-      body: JSON.stringify(body),
-    });
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      this.logger.error(`Gemini API error ${response.status}: ${errorBody}`);
-      throw new InternalServerErrorException('Gagal memanggil Gemini API.');
+    const MAX_RETRIES = 1;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': this.apiKey,
+          },
+          body: JSON.stringify(body),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        }
+
+        const errorBody = await response.text();
+        this.logger.error(`Gemini API error ${response.status}: ${errorBody}`);
+
+        // Retry on transient errors (429, 500, 503)
+        if ([429, 500, 503].includes(response.status) && attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+
+        throw new ServiceUnavailableException('Layanan AI sedang tidak tersedia. Coba lagi nanti.');
+      } catch (error) {
+        if (error instanceof ServiceUnavailableException) throw error;
+        // Network error — retry once
+        lastError = error as Error;
+        if (attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+      }
     }
 
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    this.logger.error(`Gemini API call failed after retries: ${lastError?.message}`);
+    throw new ServiceUnavailableException('Layanan AI sedang tidak tersedia. Coba lagi nanti.');
   }
 
   /**
@@ -154,7 +180,7 @@ Hasilkan dalam Bahasa Indonesia. Digitalkan SELURUH konten, jangan disingkat.
       return summary;
     } catch (error) {
       this.logger.error('Gagal mendigitalisasi materi:', error);
-      throw new InternalServerErrorException('Gagal memproses digitalisasi AI. Coba lagi nanti.');
+      throw new ServiceUnavailableException('Gagal memproses digitalisasi AI. Coba lagi nanti.');
     }
   }
 
@@ -194,7 +220,7 @@ ${summary.slice(0, 15000)}
       return cleanedJson;
     } catch (error) {
       this.logger.error('Gagal membuat soal kuis:', error);
-      throw new InternalServerErrorException('Gagal membuat soal kuis AI. Coba lagi nanti.');
+      throw new ServiceUnavailableException('Gagal membuat soal kuis AI. Coba lagi nanti.');
     }
   }
 
@@ -229,7 +255,7 @@ ATURAN:
       return await this.callGemini([{ text: prompt }]);
     } catch (error) {
       this.logger.error('Gagal menjawab pertanyaan:', error);
-      throw new InternalServerErrorException('Gagal memproses pertanyaan AI. Coba lagi nanti.');
+      throw new ServiceUnavailableException('Gagal memproses pertanyaan AI. Coba lagi nanti.');
     }
   }
 
@@ -269,7 +295,7 @@ Jika ada kolom/hari yang kosong atau bukan jadwal kuliah, abaikan.
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal mengurai jadwal kuliah:', error);
-      throw new InternalServerErrorException('Gagal memproses gambar jadwal AI. Pastikan format gambar jelas.');
+      throw new ServiceUnavailableException('Gagal memproses gambar jadwal AI. Pastikan format gambar jelas.');
     }
   }
 
@@ -327,7 +353,7 @@ ${materialsContext.slice(0, 20000)}
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal generate prediksi ujian:', error);
-      throw new InternalServerErrorException('Gagal generate prediksi ujian AI.');
+      throw new ServiceUnavailableException('Gagal generate prediksi ujian AI.');
     }
   }
 
@@ -364,7 +390,7 @@ Kembalikan HANYA array JSON valid (tanpa markdown code block) dengan format beri
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal ekstrak soal dari gambar:', error);
-      throw new InternalServerErrorException('Gagal mengekstrak soal dari gambar.');
+      throw new ServiceUnavailableException('Gagal mengekstrak soal dari gambar.');
     }
   }
 
@@ -420,7 +446,7 @@ Kembalikan HANYA array JSON berupa string pertanyaan:
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal mengekstrak nomor soal dari gambar:', error);
-      throw new InternalServerErrorException('Gagal memproses gambar soal.');
+      throw new ServiceUnavailableException('Gagal memproses gambar soal.');
     }
   }
 
@@ -455,7 +481,7 @@ Kembalikan HANYA objek JSON valid dengan struktur berikut:
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal ekstrak KRS:', error);
-      throw new InternalServerErrorException('Gagal mengekstrak KRS/jadwal dari gambar.');
+      throw new ServiceUnavailableException('Gagal mengekstrak KRS/jadwal dari gambar.');
     }
   }
 
@@ -491,7 +517,7 @@ Pastikan mengembalikan HANYA array JSON valid dengan struktur objek seperti beri
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal parse schedule base64:', error);
-      throw new InternalServerErrorException('Gagal memproses gambar jadwal.');
+      throw new ServiceUnavailableException('Gagal memproses gambar jadwal.');
     }
   }
 
@@ -516,7 +542,7 @@ Jangan tambahkan komentar pembuka/penutup, kembalikan langsung teks hasil ekstra
       return await this.callGemini([{ text: prompt }, imagePart]);
     } catch (error) {
       this.logger.error('Gagal OCR gambar:', error);
-      throw new InternalServerErrorException('Gagal mengekstrak teks dari gambar.');
+      throw new ServiceUnavailableException('Gagal mengekstrak teks dari gambar.');
     }
   }
 }

@@ -110,11 +110,16 @@ Response dalam JSON:
   ]
 }`;
 
-    const result = await this.ai.generateText(prompt, {
-      imageBase64,
-      mimeType,
-      responseMimeType: 'application/json',
-    });
+    let result: string;
+    try {
+      result = await this.ai.generateText(prompt, {
+        imageBase64,
+        mimeType,
+        responseMimeType: 'application/json',
+      });
+    } catch {
+      return { detectedIngredients: [], recipes: [], error: 'AI tidak tersedia saat ini' };
+    }
 
     let parsed: any;
     try {
@@ -182,11 +187,16 @@ Response dalam JSON:
   ]
 }`;
 
-    const result = await this.ai.generateText(prompt, {
-      imageBase64,
-      mimeType,
-      responseMimeType: 'application/json',
-    });
+    let result: string;
+    try {
+      result = await this.ai.generateText(prompt, {
+        imageBase64,
+        mimeType,
+        responseMimeType: 'application/json',
+      });
+    } catch {
+      return { menuItems: [], recommendations: [], error: 'AI tidak tersedia saat ini' };
+    }
 
     let parsed: any;
     try {

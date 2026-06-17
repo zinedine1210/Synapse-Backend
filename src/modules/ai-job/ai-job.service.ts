@@ -18,34 +18,43 @@ export class AiJobService {
   async run<T>(userId: string, jobType: string, fn: () => Promise<T>): Promise<T> {
     const staleThreshold = new Date(Date.now() - STALE_MS);
 
-    // Atomic: check for existing PROCESSING + clean stale in one transaction
-    const job = await this.prisma.$transaction(async (tx) => {
-      // Clean stale PROCESSING jobs
-      await tx.aiJob.updateMany({
-        where: {
-          userId,
-          jobType,
-          status: 'PROCESSING',
-          createdAt: { lt: staleThreshold },
-        },
-        data: { status: 'FAILED', error: 'Request timeout', completedAt: new Date() },
-      });
+    let job: { id: string } | null = null;
+    try {
+      // Atomic: check for existing PROCESSING + clean stale in one transaction
+      job = await this.prisma.$transaction(async (tx) => {
+        // Clean stale PROCESSING jobs
+        await tx.aiJob.updateMany({
+          where: {
+            userId,
+            jobType,
+            status: 'PROCESSING',
+            createdAt: { lt: staleThreshold },
+          },
+          data: { status: 'FAILED', error: 'Request timeout', completedAt: new Date() },
+        });
 
-      // Check for active PROCESSING job
-      const existing = await tx.aiJob.findFirst({
-        where: { userId, jobType, status: 'PROCESSING' },
-      });
-      if (existing) {
-        throw new ConflictException(
-          'AI sedang memproses request sebelumnya. Tunggu sampai selesai ya.',
-        );
-      }
+        // Check for active PROCESSING job
+        const existing = await tx.aiJob.findFirst({
+          where: { userId, jobType, status: 'PROCESSING' },
+        });
+        if (existing) {
+          throw new ConflictException(
+            'AI sedang memproses request sebelumnya. Tunggu sampai selesai ya.',
+          );
+        }
 
-      // Create new PROCESSING job
-      return tx.aiJob.create({
-        data: { userId, jobType, status: 'PROCESSING' },
+        // Create new PROCESSING job
+        return tx.aiJob.create({
+          data: { userId, jobType, status: 'PROCESSING' },
+        });
       });
-    });
+    } catch (error: any) {
+      // Let ConflictException pass through (already processing)
+      if (error instanceof ConflictException) throw error;
+      // DB/table error — skip job tracking, run directly
+      this.logger.warn(`AiJob tracking unavailable (${jobType}): ${error?.message}`);
+      return fn();
+    }
 
     // Run the AI function outside the transaction
     try {
@@ -57,7 +66,7 @@ export class AiJobService {
           result: JSON.stringify(result),
           completedAt: new Date(),
         },
-      });
+      }).catch((e) => this.logger.warn('Failed to update AiJob to COMPLETED', e));
       return result;
     } catch (error: any) {
       // Update job to FAILED — don't let this mask the original error
@@ -80,40 +89,29 @@ export class AiJobService {
    * Returns PROCESSING job if one exists, otherwise the latest COMPLETED/FAILED.
    */
   async getStatus(userId: string, jobType: string) {
-    const staleThreshold = new Date(Date.now() - STALE_MS);
+    try {
+      const staleThreshold = new Date(Date.now() - STALE_MS);
 
-    // Clean stale PROCESSING jobs
-    await this.prisma.aiJob.updateMany({
-      where: {
-        userId,
-        jobType,
-        status: 'PROCESSING',
-        createdAt: { lt: staleThreshold },
-      },
-      data: { status: 'FAILED', error: 'Request timeout', completedAt: new Date() },
-    });
-
-    const job = await this.prisma.aiJob.findFirst({
-      where: { userId, jobType },
-      orderBy: [
-        // PROCESSING jobs first, then by recency
-        { createdAt: 'desc' },
-      ],
-    });
-
-    if (!job) return null;
-
-    // Prefer PROCESSING job over old completed
-    if (job.status !== 'PROCESSING') {
+      // Check for active PROCESSING job (non-stale)
       const processing = await this.prisma.aiJob.findFirst({
-        where: { userId, jobType, status: 'PROCESSING' },
+        where: { userId, jobType, status: 'PROCESSING', createdAt: { gte: staleThreshold } },
+        orderBy: { createdAt: 'desc' },
       });
-      if (processing) {
-        return this.formatJob(processing);
-      }
-    }
+      if (processing) return this.formatJob(processing);
 
-    return this.formatJob(job);
+      // Get latest COMPLETED/FAILED job (exclude DISMISSED and stale PROCESSING)
+      const job = await this.prisma.aiJob.findFirst({
+        where: { userId, jobType, status: { in: ['COMPLETED', 'FAILED'] } },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!job) return null;
+      return this.formatJob(job);
+    } catch (error) {
+      this.logger.error(`getStatus failed for jobType=${jobType}: ${error.message}`, error.stack);
+      // Return null instead of throwing to prevent 500 on status checks
+      return null;
+    }
   }
 
   /** Dismiss a job so it no longer shows up in status checks */

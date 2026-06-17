@@ -15,6 +15,48 @@ export class TodoService {
     private readonly aiJob: AiJobService,
   ) {}
 
+  /**
+   * Check if a recurring todo's completion is still valid for the current period.
+   * Returns true if the todo should be considered "done" in the current period.
+   */
+  private isCompletedInCurrentPeriod(completedAt: Date | null, recurrence: string): boolean {
+    if (!completedAt) return false;
+    const now = new Date();
+    const completed = new Date(completedAt);
+
+    switch (recurrence) {
+      case 'daily':
+        return completed.toDateString() === now.toDateString();
+      case 'weekly': {
+        // Same ISO week
+        const getWeekStart = (d: Date) => {
+          const day = d.getDay();
+          const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+          return new Date(d.getFullYear(), d.getMonth(), diff).toDateString();
+        };
+        return getWeekStart(completed) === getWeekStart(now);
+      }
+      case 'monthly':
+        return completed.getFullYear() === now.getFullYear() && completed.getMonth() === now.getMonth();
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * Process recurring todos: reset status to pending if completed in a previous period.
+   */
+  private processRecurringTodos(todos: any[]): any[] {
+    return todos.map(todo => {
+      if (todo.recurrence && todo.status === 'done') {
+        if (!this.isCompletedInCurrentPeriod(todo.completedAt, todo.recurrence)) {
+          return { ...todo, status: 'pending', _recurringReset: true };
+        }
+      }
+      return todo;
+    });
+  }
+
   async create(userId: string, dto: CreateTodoDto) {
     return this.prisma.personalTodo.create({
       data: {
@@ -32,6 +74,7 @@ export class TodoService {
 
   async getAll(userId: string, query: { status?: string; priority?: string; category?: string; page?: number; limit?: number }) {
     const where: any = { userId };
+    // Don't filter by status in DB for recurring todos — we compute it dynamically
     if (query.status) where.status = query.status;
     if (query.priority) where.priority = query.priority;
     if (query.category) where.category = query.category;
@@ -39,7 +82,16 @@ export class TodoService {
     const page = query.page || 1;
     const limit = query.limit || 10;
 
-    const [data, total] = await Promise.all([
+    // If filtering by status, also fetch recurring todos that might be in different state
+    let recurringAddition: any[] = [];
+    if (query.status) {
+      recurringAddition = await this.prisma.personalTodo.findMany({
+        where: { userId, recurrence: { not: null }, status: query.status === 'pending' ? 'done' : 'pending' },
+        include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
+      });
+    }
+
+    const [rawData, total] = await Promise.all([
       this.prisma.personalTodo.findMany({
         where,
         include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
@@ -50,7 +102,19 @@ export class TodoService {
       this.prisma.personalTodo.count({ where }),
     ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    // Apply recurring period logic
+    let data = this.processRecurringTodos([...rawData, ...recurringAddition]);
+
+    // Re-filter by status after recurring processing
+    if (query.status) {
+      data = data.filter(t => t.status === query.status);
+    }
+
+    // Remove duplicates
+    const seen = new Set<string>();
+    data = data.filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
+
+    return { data, total: data.length, page, limit, totalPages: Math.ceil(data.length / limit) };
   }
 
   async getById(userId: string, id: string) {
@@ -101,14 +165,13 @@ export class TodoService {
   }
 
   async getStats(userId: string) {
-    const [total, done, pending, overdue] = await Promise.all([
-      this.prisma.personalTodo.count({ where: { userId } }),
-      this.prisma.personalTodo.count({ where: { userId, status: 'done' } }),
-      this.prisma.personalTodo.count({ where: { userId, status: 'pending' } }),
-      this.prisma.personalTodo.count({
-        where: { userId, status: 'pending', dueDate: { lt: new Date() } },
-      }),
-    ]);
+    const allTodos = await this.prisma.personalTodo.findMany({ where: { userId } });
+    const processed = this.processRecurringTodos(allTodos);
+
+    const total = processed.length;
+    const done = processed.filter(t => t.status === 'done').length;
+    const pending = processed.filter(t => t.status === 'pending').length;
+    const overdue = processed.filter(t => t.status === 'pending' && t.dueDate && new Date(t.dueDate) < new Date()).length;
 
     return { total, done, pending, overdue };
   }
@@ -131,7 +194,12 @@ Respond dalam JSON format:
 
 Hanya respond JSON, tanpa markdown.`;
 
-    const result = await this.ai.generateText(prompt);
+    let result: string;
+    try {
+      result = await this.ai.generateText(prompt);
+    } catch {
+      return { title: text };
+    }
     try {
       return JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
     } catch {

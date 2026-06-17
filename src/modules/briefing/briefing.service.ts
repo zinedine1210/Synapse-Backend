@@ -288,7 +288,12 @@ ATURAN:
 - JANGAN tambahkan section yang tidak ada datanya
 - Format konten di dalam setiap section sebagai markdown (bold, list, dll)`;
 
-    const content = await this.ai.generateText(prompt);
+    let content: string;
+    try {
+      content = await this.ai.generateText(prompt);
+    } catch {
+      content = '<!-- SECTION:motivasi -->\nMaaf, AI briefing sedang tidak tersedia. Coba lagi nanti ya~ 🙏';
+    }
 
     // Save to cache
     const briefing = await this.prisma.dailyBriefing.upsert({

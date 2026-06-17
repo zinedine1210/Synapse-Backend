@@ -31,6 +31,10 @@ const INCOME_KEYWORDS: Record<string, string[]> = {
   'jualan': ['jualan', 'jual', 'laku'],
 };
 
+// Debt keywords
+const DEBT_KEYWORDS = ['hutang', 'utang', 'pinjam', 'pinjem', 'ngutang', 'minjem', 'piutang'];
+const DEBT_TO_ME_KEYWORDS = ['piutang', 'ngasih pinjam', 'dipinjem', 'diutang'];
+
 function parseAmountFromText(text: string): number | null {
   const lower = text.toLowerCase().replace(/\./g, '').replace(/,/g, '');
   // "25rb" / "25ribu" / "25k"
@@ -115,14 +119,63 @@ function parseDateFromText(text: string): string | null {
   return null;
 }
 
-function ruleBasedParse(text: string): { amount: number; type: string; category: string; label: string; date?: string } | null {
+function parsePersonName(text: string): string | null {
+  const lower = text.toLowerCase();
+  // "hutang ke budi 50k" → "budi"
+  // "pinjem dari andi 100k" → "andi"
+  const patterns = [
+    /(?:hutang|utang|pinjam|pinjem|ngutang|minjem)\s+(?:ke|sama|dari|ama)\s+(\w+)/i,
+    /(?:piutang|dipinjem|diutang)\s+(?:oleh|dari|sama|ama)?\s*(\w+)/i,
+    /(\w+)\s+(?:hutang|utang|ngutang|minjem|pinjam|pinjem)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      const name = match[1].trim();
+      // Skip amount-like words and common keywords
+      if (/^\d/.test(name) || ['ke', 'dari', 'sama', 'ama', 'untuk', 'buat'].includes(name.toLowerCase())) continue;
+      return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+    }
+  }
+  return null;
+}
+
+interface ParseResult {
+  amount: number;
+  type: string;
+  category: string;
+  label: string;
+  date?: string;
+  isDebt?: boolean;
+  debtType?: string;
+  personName?: string;
+}
+
+function ruleBasedParse(text: string): ParseResult | null {
   const amount = parseAmountFromText(text);
   if (!amount) return null;
 
   const lower = text.toLowerCase();
   const date = parseDateFromText(text) || undefined;
 
-  // Check income keywords first
+  // Check debt keywords first
+  if (DEBT_KEYWORDS.some(kw => lower.includes(kw))) {
+    const isToMe = DEBT_TO_ME_KEYWORDS.some(kw => lower.includes(kw));
+    const personName = parsePersonName(text);
+    const label = text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text;
+    return {
+      amount,
+      type: isToMe ? 'income' : 'expense',
+      category: 'hutang',
+      label,
+      date,
+      isDebt: true,
+      debtType: isToMe ? 'owed_to_me' : 'owed_by_me',
+      personName: personName || undefined,
+    };
+  }
+
+  // Check income keywords
   for (const [cat, keywords] of Object.entries(INCOME_KEYWORDS)) {
     if (keywords.some(kw => lower.includes(kw))) {
       return { amount, type: 'income', category: cat, label: text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text, date };
@@ -415,12 +468,16 @@ export class DuitTrackerService {
 
     // Priority 2: AI parsing (jika rule tidak match)
     return this.aiJob.run(userId, 'parse_transaction', async () => {
-    const prompt = `Kamu adalah asisten keuangan. Parse input berikut menjadi transaksi keuangan.
+    const prompt = `Kamu adalah asisten keuangan. Parse input berikut menjadi transaksi keuangan ATAU hutang.
 Input: "${text}"
 Hari ini: ${new Date().toISOString().split('T')[0]}
 
-Kategori expense: makanan, minuman, transportasi, belanja, hiburan, tagihan, kesehatan, pendidikan, kos, lainnya
+Kategori expense: makanan, minuman, transportasi, belanja, hiburan, tagihan, kesehatan, pendidikan, kos, hutang, lainnya
 Kategori income: gaji, freelance, kiriman, beasiswa, bonus, jualan, lainnya
+
+Jika input menyebut hutang/utang/pinjam/pinjem/ngutang, set isDebt=true.
+- "hutang ke X" / "pinjam dari X" → debtType: "owed_by_me"
+- "piutang dari X" / "X hutang ke saya" → debtType: "owed_to_me"
 
 Respond dalam JSON format:
 {
@@ -429,12 +486,20 @@ Respond dalam JSON format:
   "category": string,
   "label": string (deskripsi singkat Bahasa Indonesia),
   "note": string | null,
-  "date": string | null (format YYYY-MM-DD, null jika tidak disebutkan. Deteksi: "kemarin", "tanggal 11 juni", "2 hari lalu", dll)
+  "date": string | null (format YYYY-MM-DD, null jika tidak disebutkan),
+  "isDebt": boolean (true jika ini hutang/piutang),
+  "debtType": "owed_by_me" | "owed_to_me" | null,
+  "personName": string | null (nama orang yang terkait hutang)
 }
 
 Hanya respond JSON, tanpa markdown.`;
 
-    const result = await this.ai.generateText(prompt);
+    let result: string;
+    try {
+      result = await this.ai.generateText(prompt);
+    } catch {
+      return { parsedBy: 'failed', error: 'AI tidak tersedia saat ini' };
+    }
     try {
       const parsed = JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
       return { ...parsed, parsedBy: 'ai' };
@@ -549,10 +614,15 @@ Catatan:
 - Jika struk tidak terbaca, return { "error": "Struk tidak terbaca" }
 - HANYA return JSON, tanpa teks lain`;
 
-    const result = await this.ai.generateText(prompt, {
-      imageBase64,
-      mimeType,
-    });
+    let result: string;
+    try {
+      result = await this.ai.generateText(prompt, {
+        imageBase64,
+        mimeType,
+      });
+    } catch {
+      return { error: 'AI tidak tersedia saat ini. Coba lagi nanti.' };
+    }
 
     try {
       const cleaned = this.extractJson(result);
