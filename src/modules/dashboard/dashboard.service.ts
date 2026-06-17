@@ -411,7 +411,7 @@ export class DashboardService {
       );
     }
 
-    return this.aiJob.run(user.id, 'ai_briefing', async () => {
+    return this.aiJob.runAsync(user.id, 'ai_briefing', async () => {
     const briefingResult = await this.fetchAndBuildBriefing(user);
     const newHitCount = hitCount + 1;
     const contentToStore = {

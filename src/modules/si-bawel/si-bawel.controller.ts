@@ -33,8 +33,8 @@ export class SiBawelController {
     return this.svc.chat(user.id, message);
   }
 
-  @Get('weekly-roast')
-  getWeeklyRoast(@GetUser() user: User) {
-    return this.svc.getWeeklyRoast(user.id);
+  @Post('weekly-roast')
+  generateWeeklyRoast(@GetUser() user: User) {
+    return this.svc.generateWeeklyRoast(user.id);
   }
 }

@@ -598,7 +598,7 @@ Format response (JSON only):
   }
 
   async scanReceipt(userId: string, imageBase64: string, mimeType: string) {
-    return this.aiJob.run(userId, 'scan_receipt', async () => {
+    return this.aiJob.runAsync(userId, 'scan_receipt', async () => {
     const prompt = `Kamu adalah OCR parser untuk struk belanja Indonesia.
 
 Dari foto struk ini, ekstrak setiap item transaksi dalam format JSON array:

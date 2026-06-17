@@ -124,7 +124,7 @@ export class ExamPredictionService {
     }
 
     // Panggil AI Service
-    return this.aiJob.run(userId, 'exam_prediction', async () => {
+    return this.aiJob.runAsync(userId, 'exam_prediction', async () => {
     const questions = await this.aiService.generateExamPrediction(
       context,
       dto.type,
@@ -173,7 +173,7 @@ export class ExamPredictionService {
       throw new ForbiddenException('Anda tidak memiliki izin untuk mengunggah prediksi ujian.');
     }
 
-    return this.aiJob.run(userId, 'exam_upload_image', async () => {
+    return this.aiJob.runAsync(userId, 'exam_upload_image', async () => {
     const questions = await this.aiService.extractExamFromImage(dto.base64, dto.mimeType);
 
     return this.prisma.examPrediction.create({

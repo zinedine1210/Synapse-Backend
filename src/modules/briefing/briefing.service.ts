@@ -314,7 +314,7 @@ ATURAN:
   }
 
   async refreshBriefing(userId: string) {
-    return this.aiJob.run(userId, 'briefing_refresh', async () => {
+    return this.aiJob.runAsync(userId, 'briefing_refresh', async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 

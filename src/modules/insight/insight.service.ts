@@ -133,7 +133,7 @@ export class InsightService {
    * Generate AI-powered insight text from weekly data
    */
   async getAiInsight(userId: string) {
-    return this.aiJob.run(userId, 'ai_insight', async () => {
+    return this.aiJob.runAsync(userId, 'ai_insight', async () => {
     const summary = await this.getWeeklySummary(userId);
 
     const prompt = `Kamu adalah asisten keuangan & produktivitas untuk anak muda Indonesia.

@@ -14,7 +14,7 @@ export class SplitBillService {
   ) {}
 
   async scanReceipt(userId: string, imageBase64: string, mimeType: string) {
-    return this.aiJob.run(userId, 'split_bill_scan', async () => {
+    return this.aiJob.runAsync(userId, 'split_bill_scan', async () => {
     const prompt = `Kamu adalah OCR parser AHLI untuk struk/receipt belanja Indonesia.
 
 INSTRUKSI PENTING:

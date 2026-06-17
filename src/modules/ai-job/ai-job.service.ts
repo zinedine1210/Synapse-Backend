@@ -85,6 +85,67 @@ export class AiJobService {
   }
 
   /**
+   * Start an AI job asynchronously — returns immediately with status.
+   * The AI function runs in the background and updates the job when done.
+   * Frontend polls GET /ai-jobs/status?type=xxx to get the result.
+   */
+  async runAsync<T>(userId: string, jobType: string, fn: () => Promise<T>): Promise<{ status: string; message: string }> {
+    const staleThreshold = new Date(Date.now() - STALE_MS);
+
+    let job: { id: string; existing: boolean };
+    try {
+      job = await this.prisma.$transaction(async (tx) => {
+        // Clean stale PROCESSING jobs
+        await tx.aiJob.updateMany({
+          where: { userId, jobType, status: 'PROCESSING', createdAt: { lt: staleThreshold } },
+          data: { status: 'FAILED', error: 'Request timeout', completedAt: new Date() },
+        });
+
+        // Check for active PROCESSING job
+        const existing = await tx.aiJob.findFirst({
+          where: { userId, jobType, status: 'PROCESSING' },
+        });
+        if (existing) {
+          return { id: existing.id, existing: true };
+        }
+
+        // Create new PROCESSING job
+        const created = await tx.aiJob.create({
+          data: { userId, jobType, status: 'PROCESSING' },
+        });
+        return { id: created.id, existing: false };
+      });
+    } catch (error: any) {
+      // DB/table error — run synchronously as fallback
+      this.logger.warn(`AiJob async tracking unavailable (${jobType}): ${error?.message}`);
+      const result = await fn();
+      return { status: 'COMPLETED', message: JSON.stringify(result) };
+    }
+
+    if (job.existing) {
+      return { status: 'PROCESSING', message: 'Sedang diproses. Tunggu ya~' };
+    }
+
+    // Fire-and-forget: run in background
+    (async () => {
+      try {
+        const result = await fn();
+        await this.prisma.aiJob.update({
+          where: { id: job.id },
+          data: { status: 'COMPLETED', result: JSON.stringify(result), completedAt: new Date() },
+        });
+      } catch (error: any) {
+        await this.prisma.aiJob.update({
+          where: { id: job.id },
+          data: { status: 'FAILED', error: error?.message || 'Unknown error', completedAt: new Date() },
+        }).catch((e) => this.logger.warn(`Failed to mark job FAILED: ${e?.message}`));
+      }
+    })();
+
+    return { status: 'PROCESSING', message: 'Sedang diproses oleh AI...' };
+  }
+
+  /**
    * Get the latest job status for a user + jobType.
    * Returns PROCESSING job if one exists, otherwise the latest COMPLETED/FAILED.
    */

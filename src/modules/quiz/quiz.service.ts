@@ -50,7 +50,7 @@ export class QuizService {
       };
     }
 
-    return this.aiJob.run(user.id, 'generate_quiz', async () => {
+    return this.aiJob.runAsync(user.id, 'generate_quiz', async () => {
     const questionsJson = await this.aiService.generateQuizQuestions(
       combinedSummary,
       dto.count ?? 10,

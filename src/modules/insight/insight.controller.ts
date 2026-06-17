@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { InsightService } from './insight.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
@@ -17,7 +17,7 @@ export class InsightController {
     return this.svc.getWeeklySummary(user.id);
   }
 
-  @Get('ai')
+  @Post('ai')
   getAiInsight(@GetUser() user: User) {
     return this.svc.getAiInsight(user.id);
   }
