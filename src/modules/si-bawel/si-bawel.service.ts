@@ -135,110 +135,49 @@ Max 4-5 kalimat.`;
 
   async generateWeeklyRoast(userId: string) {
     try {
-      // Check AI usage limit (graceful — skip if service unavailable)
       await this.aiUsage.checkAndRecord(userId, 'weekly_roast');
     } catch (error: any) {
-      // Let ForbiddenException (limit exceeded) pass through as 403
       if (error?.status === 403) throw error;
-      // Any other error (DB issues, missing table) — log and continue without usage tracking
       this.logger.warn(`checkAndRecord failed for weekly_roast: ${error?.message}`);
     }
 
-    // Start job tracking — this returns immediately with the job info
-    // The actual AI work happens in the background
-    const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
-
-    let job: any;
-    try {
-      job = await this.prisma.$transaction(async (tx) => {
-        // Clean stale PROCESSING jobs
-        await (tx as any).aiJob.updateMany({
-          where: { userId, jobType: 'weekly_roast', status: 'PROCESSING', createdAt: { lt: staleThreshold } },
-          data: { status: 'FAILED', error: 'Request timeout', completedAt: new Date() },
-        });
-
-        // Check for active PROCESSING job
-        const existing = await (tx as any).aiJob.findFirst({
-          where: { userId, jobType: 'weekly_roast', status: 'PROCESSING' },
-        });
-        if (existing) {
-          return { existing: true, id: existing.id };
-        }
-
-        // Create new PROCESSING job
-        const created = await (tx as any).aiJob.create({
-          data: { userId, jobType: 'weekly_roast', status: 'PROCESSING' },
-        });
-        return { existing: false, id: created.id };
-      });
-    } catch (error: any) {
-      this.logger.warn(`AiJob tracking failed for weekly_roast: ${error?.message}`);
-      // If job tracking fails, still run synchronously as fallback
-      const result = await this.runWeeklyRoastLogic(userId);
-      return result;
-    }
-
-    // If already processing, return status immediately
-    if (job.existing) {
-      return { status: 'PROCESSING', message: 'Weekly Roast sedang diproses. Tunggu ya~' };
-    }
-
-    // Fire-and-forget: run AI in background, update job when done
-    this.runWeeklyRoastInBackground(userId, job.id).catch((e) =>
-      this.logger.error(`Background weekly roast failed: ${e?.message}`),
-    );
-
-    return { status: 'PROCESSING', message: 'Weekly Roast sedang diproses oleh AI...' };
-  }
-
-  private async runWeeklyRoastInBackground(userId: string, jobId: string) {
-    try {
-      const result = await this.runWeeklyRoastLogic(userId);
-      await this.prisma.aiJob.update({
-        where: { id: jobId },
-        data: { status: 'COMPLETED', result: JSON.stringify(result), completedAt: new Date() },
-      });
-    } catch (error: any) {
-      await this.prisma.aiJob.update({
-        where: { id: jobId },
-        data: { status: 'FAILED', error: error?.message || 'Unknown error', completedAt: new Date() },
-      }).catch(() => {});
-    }
+    return this.aiJob.runAsync(userId, 'weekly_roast', () => this.runWeeklyRoastLogic(userId));
   }
 
   private async runWeeklyRoastLogic(userId: string) {
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    try {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-    const weekWhere = { userId, date: { gte: oneWeekAgo } };
-    const [typeSums, categorySums, txCount, setting] = await Promise.all([
-      this.prisma.transaction.groupBy({
-        by: ['type'],
-        where: weekWhere,
-        _sum: { amount: true },
-      }),
-      this.prisma.transaction.groupBy({
-        by: ['category'],
-        where: { ...weekWhere, type: 'expense' },
-        _sum: { amount: true },
-      }),
-      this.prisma.transaction.count({ where: weekWhere }),
-      this.getSetting(userId),
-    ]);
+      const weekWhere = { userId, date: { gte: oneWeekAgo } };
+      const [typeSums, categorySums, txCount, setting] = await Promise.all([
+        this.prisma.transaction.groupBy({
+          by: ['type'],
+          where: weekWhere,
+          _sum: { amount: true },
+        }),
+        this.prisma.transaction.groupBy({
+          by: ['category'],
+          where: { ...weekWhere, type: 'expense' },
+          _sum: { amount: true },
+        }),
+        this.prisma.transaction.count({ where: weekWhere }),
+        this.getSetting(userId),
+      ]);
 
-    const income = typeSums.find(g => g.type === 'income')?._sum?.amount || 0;
-    const expense = typeSums.find(g => g.type === 'expense')?._sum?.amount || 0;
+      const income = typeSums.find(g => g.type === 'income')?._sum?.amount || 0;
+      const expense = typeSums.find(g => g.type === 'expense')?._sum?.amount || 0;
 
-    const byCategory: Record<string, number> = {};
-    categorySums.forEach(g => {
-      byCategory[g.category] = g._sum.amount || 0;
-    });
+      const byCategory: Record<string, number> = {};
+      categorySums.forEach(g => {
+        byCategory[g.category] = g._sum.amount || 0;
+      });
 
-    if (txCount === 0) {
-      return { score: 0, roast: 'Belum ada transaksi minggu ini. Mulai catat pengeluaranmu biar bisa di-roast! 😤', tip: 'Catat minimal 1 transaksi per hari.', biggestSpend: '-' };
-    }
+      if (txCount === 0) {
+        return { score: 0, roast: 'Belum ada transaksi minggu ini. Mulai catat pengeluaranmu biar bisa di-roast! 😤', tip: 'Catat minimal 1 transaksi per hari.', biggestSpend: '-' };
+      }
 
-    const prompt = `Kamu adalah "Si Bawel", asisten keuangan yang nyinyir.
+      const prompt = `Kamu adalah "Si Bawel", asisten keuangan yang nyinyir.
 Level: ${setting.level}
 
 Ringkasan keuangan minggu ini:
@@ -257,18 +196,28 @@ Berikan "Weekly Roast" – evaluasi mingguan yang:
 Format response (JSON):
 { "score": number, "roast": "...", "tip": "...", "biggestSpend": "kategori" }`;
 
-    try {
-      const result = await this.ai.generateText(prompt);
-      const parsed = JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
-      return parsed;
-    } catch {
-      // Fallback if AI fails
-      const topCategory = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
+      try {
+        const result = await this.ai.generateText(prompt);
+        const parsed = JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+        return parsed;
+      } catch {
+        // Fallback if AI fails
+        const topCategory = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
+        return {
+          score: Number(expense) > Number(income) ? 4 : 7,
+          roast: `Minggu ini pengeluaranmu Rp${Number(expense).toLocaleString('id-ID')} dari ${txCount} transaksi. ${topCategory ? `Paling boros di ${topCategory[0]}.` : ''} Atur lagi ya!`,
+          tip: 'Coba kurangi pengeluaran di kategori terbesar minggu depan.',
+          biggestSpend: topCategory?.[0] || '-',
+        };
+      }
+    } catch (error: any) {
+      // If DB queries fail (missing table, etc.), return a safe fallback
+      this.logger.warn(`runWeeklyRoastLogic failed: ${error?.message}`);
       return {
-        score: Number(expense) > Number(income) ? 4 : 7,
-        roast: `Minggu ini pengeluaranmu Rp${Number(expense).toLocaleString('id-ID')} dari ${txCount} transaksi. ${topCategory ? `Paling boros di ${topCategory[0]}.` : ''} Atur lagi ya!`,
-        tip: 'Coba kurangi pengeluaran di kategori terbesar minggu depan.',
-        biggestSpend: topCategory?.[0] || '-',
+        score: 5,
+        roast: 'Gak bisa ngecek data keuanganmu nih. Pastikan udah catat transaksi dulu ya!',
+        tip: 'Mulai catat pengeluaran harianmu biar bisa di-roast minggu depan.',
+        biggestSpend: '-',
       };
     }
   }

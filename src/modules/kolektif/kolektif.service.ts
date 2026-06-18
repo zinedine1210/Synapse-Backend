@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class KolektifService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   private async ensureMember(classId: string, userId: string) {
     const m = await this.prisma.classMember.findUnique({ where: { classId_userId: { classId, userId } }, include: { classRole: true } });
@@ -85,6 +89,19 @@ export class KolektifService {
         description: data.description,
       },
       include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
+    }).then(async (tx) => {
+      // Notify: payment recorded for kas
+      if (data.type === 'IN') {
+        const payerName = tx.user?.fullName || 'Seseorang';
+        this.notificationService.notifyClassMembers(
+          fund.classId,
+          finalUserId,
+          '💰 Pembayaran Kas',
+          `${payerName} membayar Rp${data.amount.toLocaleString('id-ID')} untuk "${fund.name}"`,
+          { category: 'kelas', actionUrl: `/class/${fund.classId}` },
+        ).catch(() => {});
+      }
+      return tx;
     });
   }
 

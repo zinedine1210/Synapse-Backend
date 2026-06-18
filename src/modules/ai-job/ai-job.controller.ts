@@ -10,9 +10,10 @@ export class AiJobController {
   constructor(private readonly aiJobService: AiJobService) {}
 
   @Get('status')
-  getStatus(@GetUser() user: User, @Query('type') type: string) {
-    if (!type) return null;
-    return this.aiJobService.getStatus(user.id, type);
+  async getStatus(@GetUser() user: User, @Query('type') type: string) {
+    if (!type) return { data: null };
+    const result = await this.aiJobService.getStatus(user.id, type);
+    return { data: result ?? null };
   }
 
   @Post(':id/dismiss')

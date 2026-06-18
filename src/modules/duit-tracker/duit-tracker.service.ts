@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
@@ -195,6 +195,8 @@ function ruleBasedParse(text: string): ParseResult | null {
 
 @Injectable()
 export class DuitTrackerService {
+  private readonly logger = new Logger(DuitTrackerService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
@@ -430,6 +432,20 @@ export class DuitTrackerService {
         data: { currentAmount: Math.max(0, newAmount) },
       }),
     ]);
+
+    // Check milestone notifications for deposits
+    if (dto.type === 'deposit' && tree.targetAmount > 0) {
+      const oldPct = Math.floor((tree.currentAmount / tree.targetAmount) * 100);
+      const newPct = Math.floor((Math.max(0, newAmount) / tree.targetAmount) * 100);
+
+      if (newPct >= 100 && oldPct < 100) {
+        this.notificationService.createNotification(userId, '🎉 Target Tercapai!', `Pohon "${tree.name}" sudah 100%! Rp${Math.max(0, newAmount).toLocaleString('id-ID')} terkumpul. Selamat!`, { category: 'keuangan', actionUrl: '/duit-tracker' }).catch(() => {});
+      } else if (newPct >= 75 && oldPct < 75) {
+        this.notificationService.createNotification(userId, '🌳 75% Tercapai!', `Pohon "${tree.name}" sudah 75%! Tinggal sedikit lagi!`, { category: 'keuangan', actionUrl: '/duit-tracker' }).catch(() => {});
+      } else if (newPct >= 50 && oldPct < 50) {
+        this.notificationService.createNotification(userId, '🌱 Setengah Jalan!', `Pohon "${tree.name}" sudah 50%! Terus konsisten ya!`, { category: 'keuangan', actionUrl: '/duit-tracker' }).catch(() => {});
+      }
+    }
 
     return treeTx;
   }
@@ -710,16 +726,21 @@ Catatan:
   }
 
   async createDebt(userId: string, dto: { description: string; amount: number; debtType: string; personName: string; dueDate?: string }) {
-    return this.prisma.debt.create({
-      data: {
-        userId,
-        description: dto.description,
-        amount: dto.amount,
-        debtType: dto.debtType,
-        personName: dto.personName,
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
-      },
-    });
+    try {
+      return await this.prisma.debt.create({
+        data: {
+          userId,
+          description: dto.description,
+          amount: dto.amount,
+          debtType: dto.debtType,
+          personName: dto.personName,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+        },
+      });
+    } catch (error: any) {
+      this.logger.error(`createDebt failed: ${error?.message}`);
+      throw new BadRequestException('Gagal menyimpan hutang. Pastikan data sudah benar.');
+    }
   }
 
   async updateDebt(userId: string, debtId: string, dto: { description?: string; amount?: number; debtType?: string; personName?: string; dueDate?: string }) {
@@ -766,6 +787,12 @@ Catatan:
       where: { id: debtId },
       data: { isPaid: true, paidAt: new Date(), linkedTransactionId: tx.id },
     });
+
+    // Send notification
+    const label = debt.debtType === 'owed_by_me'
+      ? `Hutang ke ${debt.personName} lunas!`
+      : `Piutang dari ${debt.personName} lunas!`;
+    this.notificationService.createNotification(userId, '✅ Hutang Lunas!', `${label} Rp${debt.amount.toLocaleString('id-ID')}`, { category: 'keuangan', actionUrl: '/duit-tracker' }).catch(() => {});
 
     return { debt: { ...debt, isPaid: true, paidAt: new Date(), linkedTransactionId: tx.id }, transaction: tx };
   }

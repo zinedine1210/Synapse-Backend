@@ -344,6 +344,15 @@ export class TaskService {
         aiAnswer,
         visibility: data.visibility || 'PRIVATE',
       },
+    }).then(submission => {
+      // Notify user: task submitted successfully
+      this.notificationService.createNotification(
+        userId,
+        '✅ Tugas Berhasil Dikumpulkan',
+        `Jawabanmu untuk "${task.title}" sudah tersimpan${aiAnswer ? ' dengan jawaban AI.' : '.'}`,
+        { category: 'kelas', actionUrl: `/class/${task.classId}` },
+      ).catch(() => {});
+      return submission;
     });
   }
 

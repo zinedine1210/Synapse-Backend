@@ -14,7 +14,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     }
 
     super({
-      log: process.env.APP_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
+      log: process.env.APP_ENV === 'development' ? ['warn', 'error'] : ['error'],
       datasources: {
         db: { url: dbUrl },
       },

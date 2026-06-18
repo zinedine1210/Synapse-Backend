@@ -329,6 +329,17 @@ export class ForumService {
     // Kirim notifikasi mention
     await this.notifyMentions(dto.content, post.classId, userId, `Balasan di "${post.title}"`, post.id);
 
+    // Notify post author about new reply (don't notify yourself)
+    if (post.authorId !== userId) {
+      const replierName = reply.author.fullName || 'Seseorang';
+      this.notificationService.createNotification(
+        post.authorId,
+        '💬 Balasan Baru',
+        `${replierName} membalas postmu "${post.title.slice(0, 40)}"`,
+        { category: 'forum', actionUrl: `/class/${post.classId}/forum/${post.id}` },
+      ).catch(() => {});
+    }
+
     const replyResult = {
       id: reply.id,
       content: reply.content,
@@ -376,6 +387,18 @@ export class ForumService {
       await this.prisma.forumVote.create({
         data: { userId, postId, value: voteValue },
       });
+
+      // Notify post author on upvote (not downvote, not self-vote)
+      if (voteValue === 1 && post.authorId !== userId) {
+        const voter = await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+        this.notificationService.createNotification(
+          post.authorId,
+          '👍 Post Kamu Di-upvote!',
+          `${voter?.fullName || 'Seseorang'} upvote postmu "${post.title.slice(0, 40)}".`,
+          { category: 'forum', actionUrl: `/class/${post.classId}/forum/${post.id}` },
+        ).catch(() => {});
+      }
+
       return { voteValue };
     }
 
@@ -403,6 +426,18 @@ export class ForumService {
       await this.prisma.forumVote.create({
         data: { userId, replyId, value: voteValue },
       });
+
+      // Notify reply author on upvote
+      if (voteValue === 1 && reply.authorId !== userId) {
+        const voter = await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+        this.notificationService.createNotification(
+          reply.authorId,
+          '👍 Balasan Kamu Di-upvote!',
+          `${voter?.fullName || 'Seseorang'} upvote balasanmu di "${reply.post.title.slice(0, 40)}".`,
+          { category: 'forum', actionUrl: `/class/${reply.post.classId}/forum/${reply.post.id}` },
+        ).catch(() => {});
+      }
+
       return { voteValue };
     }
 

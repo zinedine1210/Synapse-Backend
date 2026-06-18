@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 
 // XP Rewards table from spec
 const XP_REWARDS: Record<string, number> = {
@@ -59,7 +60,10 @@ function calculateLevel(totalXp: number): number {
 
 @Injectable()
 export class GamificationService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationService: NotificationService,
+  ) {}
 
   async getProfile(userId: string) {
     let profile = await this.prisma.userGamification.findUnique({
@@ -235,6 +239,22 @@ export class GamificationService {
         : []),
     ]);
 
+    // Notify achievements
+    if (newAchievements.length > 0) {
+      for (const achId of newAchievements) {
+        const ach = ACHIEVEMENTS.find((a) => a.id === achId);
+        if (ach) {
+          this.notificationService.createNotification(userId, `🏆 Achievement Unlocked!`, `${ach.icon} ${ach.name} — ${ach.description}`, { category: 'gamification', actionUrl: '/dashboard' }).catch(() => {});
+        }
+      }
+    }
+
+    // Notify level up
+    if (newLevel > profile.level) {
+      const levelName = LEVELS.find((l) => l.level === newLevel)?.name || '';
+      this.notificationService.createNotification(userId, '⬆️ Level Up!', `Kamu naik ke Level ${newLevel} — "${levelName}"! Terus semangat! 🎉`, { category: 'gamification', actionUrl: '/dashboard' }).catch(() => {});
+    }
+
     return {
       streak: newStreak,
       longestStreak,
@@ -289,6 +309,12 @@ export class GamificationService {
         data: { userId, amount, source, description },
       }),
     ]);
+
+    // Notify level up via awardXp
+    if (newLevel > profile.level) {
+      const levelName = LEVELS.find((l) => l.level === newLevel)?.name || '';
+      this.notificationService.createNotification(userId, '⬆️ Level Up!', `Kamu naik ke Level ${newLevel} — "${levelName}"! 🎉`, { category: 'gamification', actionUrl: '/dashboard' }).catch(() => {});
+    }
 
     return { xpEarned: amount, totalXp: newTotalXp, level: newLevel };
   }

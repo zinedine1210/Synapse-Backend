@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
+import { NotificationService } from '../notification/notification.service';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
 import { AttemptQuizDto } from './dto/attempt-quiz.dto';
 import { User } from '@prisma/client';
@@ -14,6 +15,7 @@ export class QuizService {
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
     private readonly aiJob: AiJobService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async generateQuiz(user: User, dto: GenerateQuizDto) {
@@ -99,6 +101,18 @@ export class QuizService {
         answers: dto.answers ? JSON.stringify(dto.answers) : undefined,
       },
     });
+
+    // Send notification for quiz result
+    const emoji = attempt.passed ? '🎉' : '💪';
+    const msg = attempt.passed
+      ? `Selamat! Kamu lulus quiz dengan skor ${attempt.score}%. Mantap!`
+      : `Skor quiz kamu ${attempt.score}%. Jangan menyerah, coba lagi!`;
+    this.notificationService.createNotification(
+      userId,
+      `${emoji} Hasil Quiz`,
+      msg,
+      { category: 'kelas', actionUrl: '/quiz' },
+    ).catch(() => {});
 
     return {
       message: attempt.passed ? '🎉 Lulus!' : 'Belum lulus. Coba lagi!',

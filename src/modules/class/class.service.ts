@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -21,6 +22,7 @@ export class ClassService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly notificationService: NotificationService,
   ) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL')!,
@@ -298,6 +300,32 @@ export class ClassService implements OnModuleInit {
     });
 
     this.logger.log(`User ${userId} ${isPending ? 'meminta bergabung' : 'bergabung'} ke kelas ${classId} sebagai MEMBER`);
+
+    // Notify class owner/members about new member
+    if (!isPending) {
+      const joiner = await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+      const joinerName = joiner?.fullName || 'Seseorang';
+      this.notificationService.notifyClassMembers(
+        classId,
+        userId,
+        '👥 Anggota Baru',
+        `${joinerName} bergabung ke kelas "${targetClass.name}".`,
+        { category: 'kelas', actionUrl: `/class/${classId}` },
+      ).catch(() => {});
+    } else {
+      // Notify class owner about pending request
+      const owner = await this.prisma.classMember.findFirst({ where: { classId, role: 'OWNER' }, select: { userId: true } });
+      if (owner) {
+        const joiner = await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+        this.notificationService.createNotification(
+          owner.userId,
+          '🔔 Permintaan Bergabung',
+          `${joiner?.fullName || 'Seseorang'} ingin bergabung ke kelas "${targetClass.name}". Setujui?`,
+          { category: 'kelas', actionUrl: `/class/${classId}` },
+        ).catch(() => {});
+      }
+    }
+
     return { 
       message: isPending ? 'Permintaan bergabung telah dikirim. Menunggu persetujuan admin.' : 'Berhasil bergabung ke kelas.', 
       role: membership.role, 
@@ -325,6 +353,15 @@ export class ClassService implements OnModuleInit {
       where: { id: member.id },
       data: { status: 'ACTIVE', classRoleId: autoRole || member.classRoleId },
     });
+
+    // Notify the approved user
+    this.notificationService.createNotification(
+      targetUserId,
+      '✅ Permintaan Disetujui!',
+      `Kamu sudah diterima di kelas "${cls?.name || ''}". Mulai eksplorasi sekarang!`,
+      { category: 'kelas', actionUrl: `/class/${classId}` },
+    ).catch(() => {});
+
     return { message: 'Anggota berhasil disetujui.' };
   }
 

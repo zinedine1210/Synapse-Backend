@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class SessionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly notificationService: NotificationService,
   ) {
     this.supabase = createClient(
       this.configService.get<string>('SUPABASE_URL')!,
@@ -86,6 +88,16 @@ export class SessionService {
         title,
         sequence,
       },
+    }).then(session => {
+      // Notify class members about new session
+      this.notificationService.notifyClassMembers(
+        classId,
+        userId,
+        '📖 Pertemuan Baru',
+        `Pertemuan baru: "${title}" telah dibuat.`,
+        { category: 'kelas', actionUrl: `/class/${classId}` },
+      ).catch(() => {});
+      return session;
     });
   }
 

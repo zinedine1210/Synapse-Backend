@@ -1,14 +1,32 @@
 import { Injectable, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { NotificationService } from '../notification/notification.service';
 
 /** Stale threshold: jobs PROCESSING for longer than this are considered stuck */
 const STALE_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Human-readable labels for AI job types */
+const JOB_LABELS: Record<string, { title: string; url: string }> = {
+  weekly_roast: { title: 'Weekly Roast siap! 🔥', url: '/duit-tracker' },
+  scan_receipt: { title: 'Scan struk selesai! 📸', url: '/duit-tracker' },
+  ai_briefing: { title: 'AI Briefing siap! 📋', url: '/dashboard' },
+  ai_insight: { title: 'AI Insight siap! 💡', url: '/insight' },
+  food_from_fridge: { title: 'Rekomendasi makanan siap! 🍳', url: '/makan' },
+  food_from_menu: { title: 'Analisis menu selesai! 🍽️', url: '/makan' },
+  split_bill_scan: { title: 'Split bill selesai di-scan! 💰', url: '/split-bill' },
+  exam_prediction: { title: 'Prediksi ujian siap! 📝', url: '/class' },
+  generate_quiz: { title: 'Kuis AI berhasil dibuat! 🎯', url: '/quiz' },
+  briefing_refresh: { title: 'Briefing diperbarui! 📋', url: '/dashboard' },
+};
 
 @Injectable()
 export class AiJobService {
   private readonly logger = new Logger(AiJobService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   /**
    * Wrap an AI call with job tracking.
@@ -134,11 +152,15 @@ export class AiJobService {
           where: { id: job.id },
           data: { status: 'COMPLETED', result: JSON.stringify(result), completedAt: new Date() },
         });
+        // Send push notification on completion
+        this.sendJobNotification(userId, jobType, true).catch(() => {});
       } catch (error: any) {
         await this.prisma.aiJob.update({
           where: { id: job.id },
           data: { status: 'FAILED', error: error?.message || 'Unknown error', completedAt: new Date() },
         }).catch((e) => this.logger.warn(`Failed to mark job FAILED: ${e?.message}`));
+        // Send failure notification
+        this.sendJobNotification(userId, jobType, false).catch(() => {});
       }
     })();
 
@@ -202,5 +224,31 @@ export class AiJobService {
       createdAt: job.createdAt,
       completedAt: job.completedAt,
     };
+  }
+
+  /** Send notification when AI job completes or fails */
+  private async sendJobNotification(userId: string, jobType: string, success: boolean) {
+    try {
+      const label = JOB_LABELS[jobType];
+      if (!label) return; // unknown job type, skip
+
+      if (success) {
+        await this.notificationService.createNotification(
+          userId,
+          `🤖 ${label.title}`,
+          `AI selesai memproses. Lihat hasilnya sekarang!`,
+          { category: 'ai', actionUrl: label.url },
+        );
+      } else {
+        await this.notificationService.createNotification(
+          userId,
+          '⚠️ AI Gagal Memproses',
+          `Proses ${label.title.replace(/!|siap|selesai/g, '').trim()} gagal. Coba lagi nanti.`,
+          { category: 'ai', actionUrl: label.url },
+        );
+      }
+    } catch (err: any) {
+      this.logger.debug(`sendJobNotification skipped: ${err?.message}`);
+    }
   }
 }
