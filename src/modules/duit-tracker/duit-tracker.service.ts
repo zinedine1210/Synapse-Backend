@@ -796,4 +796,129 @@ Catatan:
 
     return { debt: { ...debt, isPaid: true, paidAt: new Date(), linkedTransactionId: tx.id }, transaction: tx };
   }
+
+  // ── Recurring Bills / Tagihan ──
+
+  async getBills(userId: string) {
+    const bills = await this.prisma.recurringBill.findMany({
+      where: { userId },
+      orderBy: { dueDay: 'asc' },
+    });
+
+    // Annotate each bill with isPaidThisMonth status
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    return bills.map(bill => {
+      const isPaidThisMonth = bill.lastPaidFor
+        ? new Date(bill.lastPaidFor) >= thisMonthStart
+        : false;
+      const isDueSoon = !isPaidThisMonth && bill.isActive && (
+        now.getDate() >= bill.dueDay - 3 && now.getDate() <= bill.dueDay + 1
+      );
+      return { ...bill, isPaidThisMonth, isDueSoon };
+    });
+  }
+
+  async createBill(userId: string, dto: { name: string; amount: number; dueDay: number; category?: string; notes?: string }) {
+    return this.prisma.recurringBill.create({
+      data: {
+        userId,
+        name: dto.name,
+        amount: dto.amount,
+        dueDay: Math.min(31, Math.max(1, dto.dueDay)),
+        category: dto.category || 'tagihan',
+        notes: dto.notes,
+      },
+    });
+  }
+
+  async updateBill(userId: string, billId: string, dto: { name?: string; amount?: number; dueDay?: number; isActive?: boolean; notes?: string }) {
+    const bill = await this.prisma.recurringBill.findFirst({ where: { id: billId, userId } });
+    if (!bill) throw new NotFoundException('Tagihan tidak ditemukan');
+    return this.prisma.recurringBill.update({
+      where: { id: billId },
+      data: {
+        ...(dto.name && { name: dto.name }),
+        ...(dto.amount && { amount: dto.amount }),
+        ...(dto.dueDay && { dueDay: Math.min(31, Math.max(1, dto.dueDay)) }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+      },
+    });
+  }
+
+  async deleteBill(userId: string, billId: string) {
+    const bill = await this.prisma.recurringBill.findFirst({ where: { id: billId, userId } });
+    if (!bill) throw new NotFoundException('Tagihan tidak ditemukan');
+    return this.prisma.recurringBill.delete({ where: { id: billId } });
+  }
+
+  async markBillPaid(userId: string, billId: string) {
+    const bill = await this.prisma.recurringBill.findFirst({ where: { id: billId, userId } });
+    if (!bill) throw new NotFoundException('Tagihan tidak ditemukan');
+
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Create transaction for the bill payment
+    const tx = await this.prisma.transaction.create({
+      data: {
+        userId,
+        amount: bill.amount,
+        type: 'expense',
+        category: bill.category || 'tagihan',
+        label: `Bayar ${bill.name}`,
+        note: `Tagihan bulanan`,
+        date: now,
+      },
+    });
+
+    // Update the bill's last paid info
+    await this.prisma.recurringBill.update({
+      where: { id: billId },
+      data: { lastPaidAt: now, lastPaidFor: thisMonthStart },
+    });
+
+    return { bill: { ...bill, lastPaidAt: now, lastPaidFor: thisMonthStart }, transaction: tx };
+  }
+
+  // ── Financial Overview (for hero card) ──
+
+  async getFinancialOverview(userId: string) {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [unpaidBills, activeDebts] = await Promise.all([
+      this.prisma.recurringBill.findMany({
+        where: {
+          userId,
+          isActive: true,
+          OR: [
+            { lastPaidFor: null },
+            { lastPaidFor: { lt: thisMonthStart } },
+          ],
+        },
+      }),
+      this.prisma.debt.findMany({
+        where: { userId, isPaid: false },
+      }),
+    ]);
+
+    const totalUnpaidBills = unpaidBills.reduce((sum, b) => sum + b.amount, 0);
+    const totalDebtOwed = activeDebts
+      .filter(d => d.debtType === 'owed_by_me')
+      .reduce((sum, d) => sum + d.amount, 0);
+    const totalDebtLent = activeDebts
+      .filter(d => d.debtType === 'owed_to_me')
+      .reduce((sum, d) => sum + d.amount, 0);
+
+    return {
+      unpaidBills: unpaidBills.map(b => ({ id: b.id, name: b.name, amount: b.amount, dueDay: b.dueDay })),
+      totalUnpaidBills,
+      debtsOwed: activeDebts.filter(d => d.debtType === 'owed_by_me').map(d => ({ id: d.id, description: d.description, amount: d.amount, personName: d.personName })),
+      totalDebtOwed,
+      debtsLent: activeDebts.filter(d => d.debtType === 'owed_to_me').map(d => ({ id: d.id, description: d.description, amount: d.amount, personName: d.personName })),
+      totalDebtLent,
+    };
+  }
 }

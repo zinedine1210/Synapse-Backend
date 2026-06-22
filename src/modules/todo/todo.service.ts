@@ -58,7 +58,7 @@ export class TodoService {
   }
 
   async create(userId: string, dto: CreateTodoDto) {
-    return this.prisma.personalTodo.create({
+    const todo = await this.prisma.personalTodo.create({
       data: {
         userId,
         title: dto.title,
@@ -70,6 +70,56 @@ export class TodoService {
       },
       include: { reminders: true },
     });
+
+    // Auto-generate future monthly instances if recurrence is set via DTO
+    if ((dto as any).recurrence === 'monthly' && dto.dueDate) {
+      await this.generateMonthlyInstances(userId, todo.id, todo.title, new Date(dto.dueDate), todo.description, todo.priority, todo.category, dto.dueTime);
+    }
+
+    return todo;
+  }
+
+  /**
+   * Generate future monthly instances linked via parentTodoId.
+   * Creates instances for the next 6 months.
+   */
+  private async generateMonthlyInstances(
+    userId: string,
+    parentId: string,
+    title: string,
+    baseDueDate: Date,
+    description?: string | null,
+    priority?: string,
+    category?: string | null,
+    dueTime?: string | null,
+  ) {
+    const instances = [];
+    const day = baseDueDate.getDate();
+
+    for (let i = 1; i <= 6; i++) {
+      const futureDate = new Date(baseDueDate);
+      futureDate.setMonth(futureDate.getMonth() + i);
+      // Handle months with fewer days (e.g., Jan 31 -> Feb 28)
+      if (futureDate.getDate() !== day) {
+        futureDate.setDate(0); // last day of previous month
+      }
+
+      instances.push({
+        userId,
+        title,
+        description,
+        dueDate: futureDate,
+        dueTime,
+        priority: priority ?? 'medium',
+        category,
+        parentTodoId: parentId,
+        recurrence: 'monthly',
+      });
+    }
+
+    if (instances.length > 0) {
+      await this.prisma.personalTodo.createMany({ data: instances });
+    }
   }
 
   async getAll(userId: string, query: { status?: string; priority?: string; category?: string; page?: number; limit?: number }) {
@@ -79,14 +129,26 @@ export class TodoService {
     if (query.priority) where.priority = query.priority;
     if (query.category) where.category = query.category;
 
+    // In list view (default), exclude child monthly instances — show only parent
+    // Calendar view should call getUnifiedTimeline which returns all
+    if (!(query as any).includeChildren) {
+      where.parentTodoId = null;
+    }
+
     const page = query.page || 1;
     const limit = query.limit || 10;
 
     // If filtering by status, also fetch recurring todos that might be in different state
     let recurringAddition: any[] = [];
     if (query.status) {
+      const recurringWhere: any = {
+        userId,
+        recurrence: { not: null },
+        status: query.status === 'pending' ? 'done' : 'pending',
+      };
+      if (!(query as any).includeChildren) recurringWhere.parentTodoId = null;
       recurringAddition = await this.prisma.personalTodo.findMany({
-        where: { userId, recurrence: { not: null }, status: query.status === 'pending' ? 'done' : 'pending' },
+        where: recurringWhere,
         include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
       });
     }
@@ -319,11 +381,30 @@ Hanya respond JSON, tanpa markdown.`;
     });
     if (!todo) throw new NotFoundException('To-do tidak ditemukan.');
 
-    return this.prisma.personalTodo.update({
+    const updated = await this.prisma.personalTodo.update({
       where: { id: todoId },
       data: { recurrence: dto.recurrence },
       include: { reminders: true, subtasks: true },
     });
+
+    // If setting to monthly and has a dueDate, auto-generate future instances
+    if (dto.recurrence === 'monthly' && todo.dueDate) {
+      // Remove any existing child instances first
+      await this.prisma.personalTodo.deleteMany({
+        where: { parentTodoId: todoId, userId },
+      });
+      await this.generateMonthlyInstances(
+        userId, todoId, todo.title, todo.dueDate,
+        todo.description, todo.priority, todo.category,
+      );
+    } else if (!dto.recurrence) {
+      // Removing recurrence — clean up child instances
+      await this.prisma.personalTodo.deleteMany({
+        where: { parentTodoId: todoId, userId },
+      });
+    }
+
+    return updated;
   }
 
   // ==============================

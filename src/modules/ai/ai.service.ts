@@ -1,6 +1,5 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { optimizeImageForAI, optimizeImagesForAI } from '../../common/image-optimizer';
 
 /**
  * AiService – Integrasi Google Gemini via REST API.
@@ -17,9 +16,12 @@ export class AiService {
     this.modelName = this.configService.get<string>('GEMINI_MODEL') ?? 'gemini-1.5-flash';
   }
 
-  private async callGemini(parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>, maxOutputTokens?: number, responseMimeType?: string): Promise<string> {
+  private async callGemini(
+    parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>,
+    generationConfig?: Record<string, unknown>,
+  ): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent`;
-    const body: any = {
+    const body: Record<string, unknown> = {
       contents: [{ parts }],
       safetySettings: [
         {
@@ -28,67 +30,39 @@ export class AiService {
         },
       ],
     };
-    if (maxOutputTokens || responseMimeType) {
-      body.generationConfig = {};
-      if (maxOutputTokens) body.generationConfig.maxOutputTokens = maxOutputTokens;
-      if (responseMimeType) body.generationConfig.responseMimeType = responseMimeType;
+    if (generationConfig) {
+      body.generationConfig = generationConfig;
+    }
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': this.apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      this.logger.error(`Gemini API error ${response.status}: ${errorBody}`);
+      throw new InternalServerErrorException('Gagal memanggil Gemini API.');
     }
 
-    const MAX_RETRIES = 1;
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-goog-api-key': this.apiKey,
-          },
-          body: JSON.stringify(body),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-        }
-
-        const errorBody = await response.text();
-        this.logger.error(`Gemini API error ${response.status}: ${errorBody}`);
-
-        // Retry on transient errors (429, 500, 503)
-        if ([429, 500, 503].includes(response.status) && attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, 2000));
-          continue;
-        }
-
-        throw new ServiceUnavailableException('Layanan AI sedang tidak tersedia. Coba lagi nanti.');
-      } catch (error) {
-        if (error instanceof ServiceUnavailableException) throw error;
-        // Network error — retry once
-        lastError = error as Error;
-        if (attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, 2000));
-          continue;
-        }
-      }
-    }
-
-    this.logger.error(`Gemini API call failed after retries: ${lastError?.message}`);
-    throw new ServiceUnavailableException('Layanan AI sedang tidak tersedia. Coba lagi nanti.');
+    const data = await response.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   }
 
   /**
    * General-purpose text generation. Used by Phase 1 features (Si Bawel, Briefing, etc.)
    */
-  async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string; maxResolution?: number; responseMimeType?: string }): Promise<string> {
-    const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+  async generateText(prompt: string, options?: { imageBase64?: string; mimeType?: string; responseMimeType?: string }): Promise<string> {
+    const parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [];
     if (options?.imageBase64 && options?.mimeType) {
-      const optimized = await optimizeImageForAI(options.imageBase64, options.mimeType, options.maxResolution);
-      parts.push({ inlineData: { mimeType: optimized.mimeType, data: optimized.base64 } });
+      parts.push({ inline_data: { mime_type: options.mimeType, data: options.imageBase64 } });
     }
     parts.push({ text: prompt });
-    return this.callGemini(parts, undefined, options?.responseMimeType);
+    const generationConfig = options?.responseMimeType ? { response_mime_type: options.responseMimeType } : undefined;
+    return this.callGemini(parts, generationConfig);
   }
 
   /**
@@ -104,7 +78,7 @@ export class AiService {
     this.logger.log('Memproses digitalisasi materi dengan Gemini...');
 
     let prompt = `
-Kamu adalah asisten akademik yang membantu pengguna mendigitalisasi materi kuliah.
+Kamu adalah asisten akademik yang membantu mahasiswa mendigitalisasi materi kuliah.
 Ubah teks berikut menjadi dokumen digital dalam format Markdown yang terstruktur, lengkap, dan mudah diolah.
 
 ATURAN PENTING:
@@ -117,13 +91,10 @@ ATURAN PENTING:
     const parts: any[] = [];
 
     if (images && images.length > 0) {
-      // Optimize: compress + limit to 5 images max for token savings
-      const optimizedImages = await optimizeImagesForAI(images, 5);
-      
       prompt += `
 - KAMI TELAH MENGEKSTRAK GAMBAR-GAMBAR DARI DOKUMEN INI.
 - Di bawah ini adalah daftar Gambar yang diekstrak (diurutkan sesuai urutan kemunculannya):
-${optimizedImages.map((img, idx) => `- Gambar ${idx + 1}: ${(img as any).url || `image-${idx + 1}`}`).join('\n')}
+${images.map((img, idx) => `- Gambar ${idx + 1}: ${img.url}`).join('\n')}
 
 - TUGAS ANDA UNTUK GAMBAR:
   1. Lihat dan ANALISIS SECARA DETAIL setiap gambar yang disertakan dalam request ini.
@@ -140,11 +111,11 @@ ${optimizedImages.map((img, idx) => `- Gambar ${idx + 1}: ${(img as any).url || 
       // Add text part first
       parts.push({ text: '' }); // we'll populate this later
       
-      // Add each optimized image part
-      for (const img of optimizedImages) {
+      // Add each image part
+      for (const img of images) {
         parts.push({
-          inlineData: {
-            mimeType: img.mimeType,
+          inline_data: {
+            mime_type: img.mimeType,
             data: img.buffer.toString('base64'),
           },
         });
@@ -165,7 +136,7 @@ Format yang wajib digunakan:
 
 Teks materi:
 ---
-${rawText.slice(0, 30000)} 
+${rawText.slice(0, 50000)} 
 ---
 
 Hasilkan dalam Bahasa Indonesia. Digitalkan SELURUH konten, jangan disingkat.
@@ -180,7 +151,7 @@ Hasilkan dalam Bahasa Indonesia. Digitalkan SELURUH konten, jangan disingkat.
       return summary;
     } catch (error) {
       this.logger.error('Gagal mendigitalisasi materi:', error);
-      throw new ServiceUnavailableException('Gagal memproses digitalisasi AI. Coba lagi nanti.');
+      throw new InternalServerErrorException('Gagal memproses digitalisasi AI. Coba lagi nanti.');
     }
   }
 
@@ -220,7 +191,7 @@ ${summary.slice(0, 15000)}
       return cleanedJson;
     } catch (error) {
       this.logger.error('Gagal membuat soal kuis:', error);
-      throw new ServiceUnavailableException('Gagal membuat soal kuis AI. Coba lagi nanti.');
+      throw new InternalServerErrorException('Gagal membuat soal kuis AI. Coba lagi nanti.');
     }
   }
 
@@ -234,9 +205,9 @@ ${summary.slice(0, 15000)}
     this.logger.log('Menyelesaikan soal dengan Gemini...');
 
     const prompt = `
-Kamu adalah asisten belajar cerdas untuk anak muda.
+Kamu adalah asisten belajar cerdas untuk mahasiswa.
 
-${context ? `LANGKAH 1: Cari jawaban dari materi kuliah berikut:\n---\n${context.slice(0, 6000)}\n---\n\nLANGKAH 2: Jika jawabannya TIDAK ditemukan atau TIDAK lengkap dari materi di atas, gunakan pengetahuan umummu untuk melengkapi dan menjawab dengan lengkap. Jangan pernah bilang "tidak ada dalam materi" tanpa tetap memberikan jawaban.` : 'Gunakan pengetahuan umummu untuk menjawab pertanyaan berikut dengan lengkap.'}
+${context ? `LANGKAH 1: Cari jawaban dari materi kuliah berikut:\n---\n${context.slice(0, 10000)}\n---\n\nLANGKAH 2: Jika jawabannya TIDAK ditemukan atau TIDAK lengkap dari materi di atas, gunakan pengetahuan umummu untuk melengkapi dan menjawab dengan lengkap. Jangan pernah bilang "tidak ada dalam materi" tanpa tetap memberikan jawaban.` : 'Gunakan pengetahuan umummu untuk menjawab pertanyaan berikut dengan lengkap.'}
 
 Pertanyaan:
 <user_input>
@@ -255,7 +226,7 @@ ATURAN:
       return await this.callGemini([{ text: prompt }]);
     } catch (error) {
       this.logger.error('Gagal menjawab pertanyaan:', error);
-      throw new ServiceUnavailableException('Gagal memproses pertanyaan AI. Coba lagi nanti.');
+      throw new InternalServerErrorException('Gagal memproses pertanyaan AI. Coba lagi nanti.');
     }
   }
 
@@ -282,20 +253,19 @@ Jika ada kolom/hari yang kosong atau bukan jadwal kuliah, abaikan.
     `.trim();
 
     try {
-      const optimized = await optimizeImageForAI(file.buffer, file.mimetype);
       const imagePart = {
-        inlineData: {
-          data: optimized.base64,
-          mimeType: optimized.mimeType,
+        inline_data: {
+          data: file.buffer.toString('base64'),
+          mime_type: file.mimetype,
         }, 
       };
 
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart], 2048);
+      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal mengurai jadwal kuliah:', error);
-      throw new ServiceUnavailableException('Gagal memproses gambar jadwal AI. Pastikan format gambar jelas.');
+      throw new InternalServerErrorException('Gagal memproses gambar jadwal AI. Pastikan format gambar jelas.');
     }
   }
 
@@ -343,7 +313,7 @@ Kembalikan HANYA array JSON valid (tanpa markdown code block) dengan format beri
 
 Materi:
 ---
-${materialsContext.slice(0, 20000)}
+${materialsContext.slice(0, 30000)}
 ---
     `.trim();
 
@@ -353,7 +323,7 @@ ${materialsContext.slice(0, 20000)}
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal generate prediksi ujian:', error);
-      throw new ServiceUnavailableException('Gagal generate prediksi ujian AI.');
+      throw new InternalServerErrorException('Gagal generate prediksi ujian AI.');
     }
   }
 
@@ -376,11 +346,10 @@ Kembalikan HANYA array JSON valid (tanpa markdown code block) dengan format beri
 ]
     `.trim();
 
-    const optimized = await optimizeImageForAI(base64, mimeType);
     const imagePart = {
-      inlineData: {
-        data: optimized.base64,
-        mimeType: optimized.mimeType,
+      inline_data: {
+        data: base64,
+        mime_type: mimeType,
       },
     };
 
@@ -390,7 +359,7 @@ Kembalikan HANYA array JSON valid (tanpa markdown code block) dengan format beri
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal ekstrak soal dari gambar:', error);
-      throw new ServiceUnavailableException('Gagal mengekstrak soal dari gambar.');
+      throw new InternalServerErrorException('Gagal mengekstrak soal dari gambar.');
     }
   }
 
@@ -432,21 +401,20 @@ Kembalikan HANYA array JSON berupa string pertanyaan:
 ]
     `.trim();
 
-    const optimized = await optimizeImageForAI(base64, mimeType);
     const imagePart = {
-      inlineData: {
-        data: optimized.base64,
-        mimeType: optimized.mimeType,
+      inline_data: {
+        data: base64,
+        mime_type: mimeType,
       },
     };
 
     try {
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart], 2048);
+      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal mengekstrak nomor soal dari gambar:', error);
-      throw new ServiceUnavailableException('Gagal memproses gambar soal.');
+      throw new InternalServerErrorException('Gagal memproses gambar soal.');
     }
   }
 
@@ -469,9 +437,9 @@ Kembalikan HANYA objek JSON valid dengan struktur berikut:
     `.trim();
 
     const imagePart = {
-      inlineData: {
+      inline_data: {
         data: base64,
-        mimeType: mimeType,
+        mime_type: mimeType,
       },
     };
 
@@ -481,7 +449,7 @@ Kembalikan HANYA objek JSON valid dengan struktur berikut:
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal ekstrak KRS:', error);
-      throw new ServiceUnavailableException('Gagal mengekstrak KRS/jadwal dari gambar.');
+      throw new InternalServerErrorException('Gagal mengekstrak KRS/jadwal dari gambar.');
     }
   }
 
@@ -505,9 +473,9 @@ Pastikan mengembalikan HANYA array JSON valid dengan struktur objek seperti beri
     `.trim();
 
     const imagePart = {
-      inlineData: {
+      inline_data: {
         data: base64,
-        mimeType: mimeType,
+        mime_type: mimeType,
       },
     };
 
@@ -517,7 +485,7 @@ Pastikan mengembalikan HANYA array JSON valid dengan struktur objek seperti beri
       return JSON.parse(cleanedJson);
     } catch (error) {
       this.logger.error('Gagal parse schedule base64:', error);
-      throw new ServiceUnavailableException('Gagal memproses gambar jadwal.');
+      throw new InternalServerErrorException('Gagal memproses gambar jadwal.');
     }
   }
 
@@ -532,9 +500,9 @@ Jangan tambahkan komentar pembuka/penutup, kembalikan langsung teks hasil ekstra
     `.trim();
 
     const imagePart = {
-      inlineData: {
+      inline_data: {
         data: base64,
-        mimeType: mimeType,
+        mime_type: mimeType,
       },
     };
 
@@ -542,7 +510,7 @@ Jangan tambahkan komentar pembuka/penutup, kembalikan langsung teks hasil ekstra
       return await this.callGemini([{ text: prompt }, imagePart]);
     } catch (error) {
       this.logger.error('Gagal OCR gambar:', error);
-      throw new ServiceUnavailableException('Gagal mengekstrak teks dari gambar.');
+      throw new InternalServerErrorException('Gagal mengekstrak teks dari gambar.');
     }
   }
 }

@@ -150,7 +150,7 @@ Max 4-5 kalimat.`;
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
       const weekWhere = { userId, date: { gte: oneWeekAgo } };
-      const [typeSums, categorySums, txCount, setting] = await Promise.all([
+      const [typeSums, categorySums, txCount, setting, recentTx] = await Promise.all([
         this.prisma.transaction.groupBy({
           by: ['type'],
           where: weekWhere,
@@ -163,6 +163,12 @@ Max 4-5 kalimat.`;
         }),
         this.prisma.transaction.count({ where: weekWhere }),
         this.getSetting(userId),
+        this.prisma.transaction.findMany({
+          where: { ...weekWhere, type: 'expense' },
+          select: { label: true, amount: true, category: true, date: true },
+          orderBy: { amount: 'desc' },
+          take: 15,
+        }),
       ]);
 
       const income = typeSums.find(g => g.type === 'income')?._sum?.amount || 0;
@@ -174,40 +180,85 @@ Max 4-5 kalimat.`;
       });
 
       if (txCount === 0) {
-        return { score: 0, roast: 'Belum ada transaksi minggu ini. Mulai catat pengeluaranmu biar bisa di-roast! 😤', tip: 'Catat minimal 1 transaksi per hari.', biggestSpend: '-' };
+        return {
+          score: 0,
+          roast: 'Belum ada transaksi minggu ini. Mulai catat pengeluaranmu biar bisa di-roast! 😤',
+          tip: 'Catat minimal 1 transaksi per hari.',
+          biggestSpend: '-',
+          unnecessarySpending: [],
+          advice: [],
+        };
       }
 
-      const prompt = `Kamu adalah "Si Bawel", asisten keuangan yang nyinyir.
-Level: ${setting.level}
+      // List individual transactions for AI to analyze
+      const txList = recentTx.map(t =>
+        `- Rp${t.amount.toLocaleString('id-ID')} | ${t.category} | "${t.label}" | ${t.date.toLocaleDateString('id-ID')}`
+      ).join('\n');
 
-Ringkasan keuangan minggu ini:
+      const prompt = `Kamu adalah "Si Bawel", financial advisor untuk anak muda Indonesia yang nyinyir tapi peduli.
+Level kecerewetan: ${setting.level}
+
+DATA KEUANGAN MINGGU INI:
 - Total pemasukan: Rp${Number(income).toLocaleString('id-ID')}
 - Total pengeluaran: Rp${Number(expense).toLocaleString('id-ID')}
-- Saldo minggu ini: Rp${Number(Number(income) - Number(expense)).toLocaleString('id-ID')}
-- Breakdown pengeluaran: ${JSON.stringify(byCategory)}
+- Saldo: Rp${Number(Number(income) - Number(expense)).toLocaleString('id-ID')}
+- Breakdown per kategori: ${JSON.stringify(byCategory)}
 - Jumlah transaksi: ${txCount}
 
-Berikan "Weekly Roast" – evaluasi mingguan yang:
-1. Beri nilai 1-10 untuk pengelolaan keuangan minggu ini
-2. Highlight pengeluaran terbesar
-3. Kasih komentar nyinyir sesuai level
-4. Satu tips singkat untuk minggu depan
+DETAIL TRANSAKSI PENGELUARAN:
+${txList}
+
+TUGASMU:
+1. Beri skor 1-10 untuk pengelolaan keuangan minggu ini
+2. Roast/komentarin pengeluarannya dengan nyinyir tapi lucu
+3. Identifikasi 2-4 transaksi yang SEBENERNYA GAK PERLU (impulsive, bisa ditahan, dll). Jelaskan kenapa
+4. Kasih 3 nasehat keuangan yang relate sama anak muda jaman sekarang (misal soal FOMO spending, boba trap, laundry vs cuci sendiri, masak vs beli, dll)
+5. Satu tips actionable untuk minggu depan
+6. Highlight pengeluaran terbesar
 
 Format response (JSON):
-{ "score": number, "roast": "...", "tip": "...", "biggestSpend": "kategori" }`;
+{
+  "score": number,
+  "roast": "komentar nyinyir 2-3 kalimat tentang pengeluaran minggu ini",
+  "biggestSpend": "nama kategori",
+  "tip": "tips singkat untuk minggu depan",
+  "unnecessarySpending": [
+    { "item": "nama transaksi", "amount": number, "reason": "kenapa ini sebenernya gak perlu" }
+  ],
+  "advice": [
+    "nasehat 1 yang relate sama anak muda",
+    "nasehat 2",
+    "nasehat 3"
+  ],
+  "savingPotential": number
+}
+
+PENTING:
+- savingPotential = total dari semua unnecessarySpending.amount
+- Bahasa casual, gaul, relatable buat anak kuliahan
+- Jangan terlalu galak, tetep supportif
+- Kalau pengeluarannya wajar semua, tetep kasih saran untuk improve`;
 
       try {
         const result = await this.ai.generateText(prompt);
         const parsed = JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
+        // Ensure arrays exist
+        if (!Array.isArray(parsed.unnecessarySpending)) parsed.unnecessarySpending = [];
+        if (!Array.isArray(parsed.advice)) parsed.advice = [];
+        if (typeof parsed.savingPotential !== 'number') {
+          parsed.savingPotential = parsed.unnecessarySpending.reduce((s: number, item: any) => s + (item.amount || 0), 0);
+        }
         return parsed;
       } catch {
-        // Fallback if AI fails
         const topCategory = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
         return {
           score: Number(expense) > Number(income) ? 4 : 7,
           roast: `Minggu ini pengeluaranmu Rp${Number(expense).toLocaleString('id-ID')} dari ${txCount} transaksi. ${topCategory ? `Paling boros di ${topCategory[0]}.` : ''} Atur lagi ya!`,
           tip: 'Coba kurangi pengeluaran di kategori terbesar minggu depan.',
           biggestSpend: topCategory?.[0] || '-',
+          unnecessarySpending: [],
+          advice: ['Coba masak sendiri seminggu sekali', 'Bawa botol minum biar gak beli terus', 'Pikir 24 jam sebelum beli barang non-esensial'],
+          savingPotential: 0,
         };
       }
     } catch (error: any) {

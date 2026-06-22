@@ -161,31 +161,12 @@ Response dalam JSON:
     return this.aiJob.runAsync(userId, 'food_from_menu', async () => {
     const pref = await this.getPreference(userId);
 
-    const prompt = `Kamu adalah asisten makan hemat untuk anak muda Indonesia.
+    const prompt = `Lihat foto menu ini. Pilih 3-5 menu TERBAIK sesuai filter "${filter || 'hemat'}".
 
-Dari foto menu restoran ini, baca semua item menu dan harganya.
-Lalu rekomendasikan 3-5 pilihan terbaik berdasarkan filter.
+User: pedas ${pref.spicyLevel}/3, diet ${pref.dietType}${pref.avgMealBudget ? `, budget Rp${pref.avgMealBudget.toLocaleString('id-ID')}` : ''}
 
-Filter: ${filter || 'hemat'}
-Preferensi user:
-- Level pedas: ${pref.spicyLevel}/3
-- Diet: ${pref.dietType}
-${pref.avgMealBudget ? `- Budget per makan: Rp ${pref.avgMealBudget.toLocaleString('id-ID')}` : ''}
-
-Response dalam JSON:
-{
-  "menuItems": [
-    { "name": "Nasi Goreng", "price": 25000, "description": "..." }
-  ],
-  "recommendations": [
-    {
-      "name": "Nasi Goreng",
-      "price": 25000,
-      "reason": "Porsi besar, harga terjangkau",
-      "tags": ["hemat", "mengenyangkan"]
-    }
-  ]
-}`;
+JSON response:
+{ "recommendations": [{ "name": "...", "price": number, "reason": "alasan singkat", "tags": ["hemat"] }] }`;
 
     let result: string;
     try {
@@ -205,6 +186,29 @@ Response dalam JSON:
     } catch {
       return { menuItems: [], recommendations: [], rawResponse: result };
     }
+
+    // Normalize: ensure arrays exist even if AI skipped them
+    if (!Array.isArray(parsed.menuItems)) parsed.menuItems = [];
+    if (!Array.isArray(parsed.recommendations)) parsed.recommendations = [];
+
+    // Ensure each recommendation has required fields
+    parsed.recommendations = parsed.recommendations
+      .filter((r: any) => r && r.name)
+      .map((r: any) => ({
+        name: r.name,
+        price: r.price ?? 0,
+        reason: r.reason || 'Rekomendasi AI',
+        tags: Array.isArray(r.tags) ? r.tags : [],
+      }));
+
+    // Ensure each menuItem has required fields
+    parsed.menuItems = parsed.menuItems
+      .filter((m: any) => m && m.name)
+      .map((m: any) => ({
+        name: m.name,
+        price: m.price ?? 0,
+        description: m.description || '',
+      }));
 
     // Save recommendation history (don't fail the response if this errors)
     try {

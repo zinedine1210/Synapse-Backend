@@ -84,7 +84,7 @@ export class AiJobService {
           result: JSON.stringify(result),
           completedAt: new Date(),
         },
-      }).catch((e) => this.logger.warn('Failed to update AiJob to COMPLETED', e));
+      }).catch((e: any) => this.logger.warn('Failed to update AiJob to COMPLETED', e));
       return result;
     } catch (error: any) {
       // Update job to FAILED — don't let this mask the original error
@@ -97,7 +97,7 @@ export class AiJobService {
             completedAt: new Date(),
           },
         })
-        .catch((e) => this.logger.warn('Failed to update AiJob status', e));
+        .catch((e: any) => this.logger.warn('Failed to update AiJob status', e));
       throw error;
     }
   }
@@ -158,7 +158,7 @@ export class AiJobService {
         await this.prisma.aiJob.update({
           where: { id: job.id },
           data: { status: 'FAILED', error: error?.message || 'Unknown error', completedAt: new Date() },
-        }).catch((e) => this.logger.warn(`Failed to mark job FAILED: ${e?.message}`));
+        }).catch((e: any) => this.logger.warn(`Failed to mark job FAILED: ${e?.message}`));
         // Send failure notification
         this.sendJobNotification(userId, jobType, false).catch(() => {});
       }
@@ -190,8 +190,8 @@ export class AiJobService {
 
       if (!job) return null;
       return this.formatJob(job);
-    } catch (error) {
-      this.logger.error(`getStatus failed for jobType=${jobType}: ${error.message}`, error.stack);
+    } catch (error: any) {
+      this.logger.error(`getStatus failed for jobType=${jobType}: ${error?.message}`, error?.stack);
       // Return null instead of throwing to prevent 500 on status checks
       return null;
     }

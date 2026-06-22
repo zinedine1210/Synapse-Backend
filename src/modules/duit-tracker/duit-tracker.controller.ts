@@ -168,4 +168,36 @@ export class DuitTrackerController {
   markDebtPaid(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.markDebtPaid(user.id, id);
   }
+
+  // ── Recurring Bills / Tagihan ──
+
+  @Get('bills')
+  getBills(@GetUser() user: User) {
+    return this.svc.getBills(user.id);
+  }
+
+  @Post('bills')
+  createBill(@GetUser() user: User, @Body() dto: { name: string; amount: number; dueDay: number; category?: string; notes?: string }) {
+    return this.svc.createBill(user.id, dto);
+  }
+
+  @Patch('bills/:id')
+  updateBill(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { name?: string; amount?: number; dueDay?: number; isActive?: boolean; notes?: string }) {
+    return this.svc.updateBill(user.id, id, dto);
+  }
+
+  @Delete('bills/:id')
+  deleteBill(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteBill(user.id, id);
+  }
+
+  @Post('bills/:id/pay')
+  markBillPaid(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.markBillPaid(user.id, id);
+  }
+
+  @Get('financial-overview')
+  getFinancialOverview(@GetUser() user: User) {
+    return this.svc.getFinancialOverview(user.id);
+  }
 }

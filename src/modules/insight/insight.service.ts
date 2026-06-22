@@ -12,38 +12,68 @@ export class InsightService {
   ) {}
 
   /**
-   * Weekly Summary — aggregated cross-feature insight
+   * Weekly/Monthly Summary — aggregated cross-feature insight
+   * When range='month', uses calendar month boundaries for accurate totals.
    */
-  async getWeeklySummary(userId: string) {
+  async getWeeklySummary(userId: string, range?: string) {
     const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const lastWeek = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    let periodStart: Date;
+    let prevStart: Date;
+    let prevEnd: Date;
+
+    if (range === 'month' || range === 'this_month') {
+      periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    } else {
+      periodStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      prevStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+      prevEnd = new Date(periodStart.getTime() - 1);
+    }
 
     const [
       thisWeekTx,
       lastWeekTx,
-      todosCompleted,
-      todosTotal,
       gamification,
       trees,
+      qnaAnswers,
+      qnaApproved,
+      forumPosts,
+      forumReplies,
+      loginStreak,
+      totalTx,
     ] = await Promise.all([
       this.prisma.transaction.findMany({
-        where: { userId, date: { gte: weekAgo } },
+        where: { userId, date: { gte: periodStart } },
       }),
       this.prisma.transaction.findMany({
-        where: { userId, date: { gte: lastWeek, lt: weekAgo } },
-      }),
-      this.prisma.personalTodo.count({
-        where: { userId, status: 'done', updatedAt: { gte: weekAgo } },
-      }),
-      this.prisma.personalTodo.count({
-        where: { userId, createdAt: { gte: weekAgo } },
+        where: { userId, date: { gte: prevStart, lte: prevEnd } },
       }),
       this.prisma.userGamification.findUnique({ where: { userId } }),
       this.prisma.savingTree.findMany({
         where: { userId },
         orderBy: { updatedAt: 'desc' },
         take: 3,
+      }),
+      // Engagement metrics
+      this.prisma.qnaAnswer.count({
+        where: { userId, createdAt: { gte: periodStart } },
+      }).catch(() => 0),
+      this.prisma.qnaAnswer.count({
+        where: { userId, isApprovedByAsker: true, createdAt: { gte: periodStart } },
+      }).catch(() => 0),
+      this.prisma.forumPost.count({
+        where: { authorId: userId, createdAt: { gte: periodStart } },
+      }).catch(() => 0),
+      this.prisma.forumReply.count({
+        where: { authorId: userId, createdAt: { gte: periodStart } },
+      }).catch(() => 0),
+      this.prisma.userGamification.findUnique({
+        where: { userId },
+        select: { currentStreak: true, longestStreak: true },
+      }),
+      this.prisma.transaction.count({
+        where: { userId, createdAt: { gte: periodStart } },
       }),
     ]);
 
@@ -106,7 +136,7 @@ export class InsightService {
     }));
 
     return {
-      period: { from: weekAgo.toISOString(), to: now.toISOString() },
+      period: { from: periodStart.toISOString(), to: now.toISOString() },
       finance: {
         income: thisWeekIncome,
         expense: thisWeekExpense,
@@ -114,10 +144,14 @@ export class InsightService {
         changeDirection: changePercent > 0 ? 'more' : changePercent < 0 ? 'less' : 'same',
         topCategories,
       },
-      productivity: {
-        todosCompleted,
-        todosTotal,
-        completionRate: todosTotal > 0 ? Math.round((todosCompleted / todosTotal) * 100) : 0,
+      engagement: {
+        qnaAnswers: qnaAnswers as number,
+        qnaApproved: qnaApproved as number,
+        forumPosts: forumPosts as number,
+        forumReplies: forumReplies as number,
+        loginStreak: loginStreak?.currentStreak ?? 0,
+        longestStreak: loginStreak?.longestStreak ?? 0,
+        totalTransactions: totalTx,
       },
       gamification: {
         totalXp: gamification?.totalXp ?? 0,
@@ -134,21 +168,23 @@ export class InsightService {
    */
   async getAiInsight(userId: string) {
     return this.aiJob.runAsync(userId, 'ai_insight', async () => {
-    const summary = await this.getWeeklySummary(userId);
+    const summary = await this.getWeeklySummary(userId, 'month');
 
-    const prompt = `Kamu adalah asisten keuangan & produktivitas untuk anak muda Indonesia.
-Berikan insight singkat (maks 3 paragraf) berdasarkan data minggu ini:
+    const prompt = `Kamu adalah asisten keuangan & engagement untuk anak muda Indonesia.
+Berikan insight singkat (maks 3 paragraf) berdasarkan data bulan ini:
 
 Keuangan:
 - Pemasukan: Rp ${summary.finance.income.toLocaleString('id-ID')}
 - Pengeluaran: Rp ${summary.finance.expense.toLocaleString('id-ID')}
-- Perubahan dari minggu lalu: ${summary.finance.changePercent}% (${summary.finance.changeDirection === 'less' ? 'lebih hemat' : 'lebih boros'})
+- Perubahan dari periode lalu: ${summary.finance.changePercent}% (${summary.finance.changeDirection === 'less' ? 'lebih hemat' : 'lebih boros'})
 - Kategori terbesar: ${summary.finance.topCategories.map(c => `${c.category} (Rp ${c.amount.toLocaleString('id-ID')})`).join(', ')}
 
-Produktivitas:
-- Todo selesai: ${summary.productivity.todosCompleted}/${summary.productivity.todosTotal} (${summary.productivity.completionRate}%)
-- Streak: ${summary.gamification.streak} hari
-- Level: ${summary.gamification.level}
+Engagement:
+- Jawaban QnA: ${summary.engagement.qnaAnswers} (${summary.engagement.qnaApproved} disetujui)
+- Forum: ${summary.engagement.forumPosts} post, ${summary.engagement.forumReplies} reply
+- Login streak: ${summary.engagement.loginStreak} hari
+- Total transaksi dicatat: ${summary.engagement.totalTransactions}
+- Level: ${summary.gamification.level} | Streak: ${summary.gamification.streak} hari
 
 Tabungan:
 ${summary.trees.map(t => `- ${t.name}: ${t.progress}% (sisa Rp ${t.remaining.toLocaleString('id-ID')})`).join('\n') || '- Belum ada pohon tabungan'}
@@ -160,7 +196,7 @@ Format JSON: { "headline": "...", "body": "...", "tip": "..." }`;
     try {
       result = await this.ai.generateText(prompt);
     } catch {
-      return { ...summary, aiInsight: { headline: 'Insight minggu ini', body: 'AI sedang tidak tersedia. Coba lagi nanti.', tip: '' } };
+      return { ...summary, aiInsight: { headline: 'Insight bulan ini', body: 'AI sedang tidak tersedia. Coba lagi nanti.', tip: '' } };
     }
 
     try {
@@ -168,7 +204,7 @@ Format JSON: { "headline": "...", "body": "...", "tip": "..." }`;
       const insight = JSON.parse(cleaned);
       return { ...summary, aiInsight: insight };
     } catch {
-      return { ...summary, aiInsight: { headline: 'Insight minggu ini', body: result, tip: '' } };
+      return { ...summary, aiInsight: { headline: 'Insight bulan ini', body: result, tip: '' } };
     }
     }); // end aiJob.run
   }

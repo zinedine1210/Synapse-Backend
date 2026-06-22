@@ -53,7 +53,6 @@ Catatan parsing:
       result = await this.ai.generateText(prompt, {
         imageBase64,
         mimeType,
-        maxResolution: 2048,
       });
     } catch {
       return { error: 'AI tidak tersedia saat ini. Coba lagi nanti.' };

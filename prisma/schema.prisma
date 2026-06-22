@@ -8,7 +8,8 @@ datasource db {
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 // ==============================
@@ -71,7 +72,6 @@ model User {
   categoryBudgets        CategoryBudget[]
   savingTrees            SavingTree[]
   bawelSetting           BawelSetting?
-  debts                  Debt[]
   personalTodos          PersonalTodo[]
   qnaQuestions           QnaQuestion[]
   qnaAnswers             QnaAnswer[]
@@ -82,6 +82,7 @@ model User {
   foodPreference         FoodPreference?
   splitBills             SplitBill[]
   notificationPref       NotificationPreference?
+  pushSubscriptions      PushSubscription[]
   todoCategories         TodoCategory[]
   receiptScans           ReceiptScan[]
   onboardingCompleted    Boolean                     @default(false)
@@ -93,9 +94,10 @@ model User {
   foodFavorites          FoodFavorite[]
   foodHistory            FoodRecommendationHistory[]
   profile                UserProfile?
-  aiUsageLogs            AiUsageLog[]
+  recurringBills         RecurringBill[]
+  debts                  Debt[]
   aiJobs                 AiJob[]
-  pushSubscriptions      PushSubscription[]
+  aiUsageLogs            AiUsageLog[]
 }
 
 model Class {
@@ -246,25 +248,24 @@ model Notification {
 
   @@index([userId])
   @@index([isRead])
-  @@index([userId, createdAt])
 }
 
 // Config kuota & akses fitur per plan (dikontrol dari Superadmin)
 model PricingPlan {
-  id                String   @id @default(uuid())
-  name              String   @unique // e.g. "FREE", "PRO"
-  description       String?
-  maxUploadPerMonth Int      @default(5)
-  maxFileSizeMb     Int      @default(10)
-  aiRequestLimit    Int      @default(10)
-  aiBriefingLimit    Int      @default(1)
-  aiWeeklyRoastLimit Int      @default(1)
-  features          String[] // e.g. ["class", "quiz", "schedule_parser", "pdf_export"]
-  price             Float    @default(0)
-  durationDays      Int      @default(0) // 0 = unlimited, 30 = 1 month, 365 = 1 year
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  users             User[]
+  id                  String   @id @default(uuid())
+  name                String   @unique // e.g. "FREE", "PRO"
+  description         String?
+  maxUploadPerMonth   Int      @default(5)
+  maxFileSizeMb       Int      @default(10)
+  aiRequestLimit      Int      @default(10)
+  aiBriefingLimit     Int      @default(1)
+  aiWeeklyRoastLimit  Int      @default(1)
+  features            String[] // e.g. ["class", "quiz", "schedule_parser", "pdf_export"]
+  price               Float    @default(0)
+  durationDays        Int      @default(0) // 0 = unlimited, 30 = 1 month, 365 = 1 year
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  users               User[]
 }
 
 // ==============================
@@ -318,7 +319,6 @@ model ForumPost {
 
   @@index([classId])
   @@index([discussionId])
-  @@index([classId, discussionId, createdAt])
 }
 
 model ForumReply {
@@ -669,26 +669,6 @@ model BawelSetting {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model Debt {
-  id                  String    @id @default(uuid())
-  userId              String
-  description         String
-  amount              Float
-  debtType            String // "owed_by_me" | "owed_to_me"
-  personName          String
-  dueDate             DateTime?
-  isPaid              Boolean   @default(false)
-  paidAt              DateTime?
-  linkedTransactionId String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([userId, isPaid])
-}
-
 model PersonalTodo {
   id           String    @id @default(uuid())
   userId       String
@@ -747,7 +727,6 @@ model QnaQuestion {
   @@index([userId])
   @@index([slug])
   @@index([status])
-  @@index([userId, createdAt])
 }
 
 model QnaAnswer {
@@ -863,7 +842,6 @@ model SplitBill {
   participants SplitParticipant[]
 
   @@index([userId])
-  @@index([userId, createdAt])
 }
 
 model SplitBillItem {
@@ -906,11 +884,30 @@ model NotificationPreference {
   forumReply       Boolean @default(true)
   qnaAnswer        Boolean @default(true)
   achievementAlert Boolean @default(true)
-  pushEnabled      Boolean @default(true)
   quietHoursStart  String?
   quietHoursEnd    String?
+  pushEnabled      Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==============================
+// Push Subscriptions (Web Push)
+// ==============================
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, endpoint])
+  @@index([userId])
 }
 
 // ==============================
@@ -970,7 +967,6 @@ model QnaVote {
 
   @@unique([userId, answerId])
   @@index([answerId])
-  @@index([answerId, createdAt])
 }
 
 // ==============================
@@ -1094,14 +1090,50 @@ model FoodRecommendationHistory {
   id         String   @id @default(uuid())
   userId     String
   recipeName String
+  recipeData String?
+  sourceType String?  // 'fridge' or 'menu'
   budget     Float?
-  recipeData String?  @db.Text
-  sourceType String   @default("fridge")
   createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+}
+
+// ==============================
+// AI Job Tracking
+// ==============================
+
+model AiJob {
+  id          String    @id @default(uuid())
+  userId      String
+  jobType     String
+  status      String    @default("PROCESSING") // PROCESSING, COMPLETED, FAILED, DISMISSED
+  result      String?   @db.Text
+  error       String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, jobType])
+  @@index([userId, jobType, status])
+}
+
+// ==============================
+// AI Usage Log
+// ==============================
+
+model AiUsageLog {
+  id        String   @id @default(uuid())
+  userId    String
+  feature   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, feature, createdAt])
 }
 
 // ==============================
@@ -1126,57 +1158,50 @@ model UserProfile {
 }
 
 // ==============================
-// AI Usage Log
+// Recurring Bills / Tagihan
 // ==============================
 
-model AiUsageLog {
-  id        String   @id @default(uuid())
-  userId    String
-  feature   String
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, feature, createdAt])
-}
-
-// ==============================
-// AI Job Tracking
-// ==============================
-
-model AiJob {
+model RecurringBill {
   id          String    @id @default(uuid())
   userId      String
-  jobType     String
-  status      String    @default("PROCESSING") // PROCESSING, COMPLETED, FAILED
-  result      String?   @db.Text
-  error       String?   @db.Text
+  name        String
+  amount      Float
+  category    String    @default("tagihan")
+  dueDay      Int
+  isActive    Boolean   @default(true)
+  lastPaidAt  DateTime?
+  lastPaidFor DateTime?
+  notes       String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, jobType, status])
-  @@index([userId, jobType, createdAt])
-}
-
-// ==============================
-// Push Subscription
-// ==============================
-
-model PushSubscription {
-  id        String   @id @default(uuid())
-  userId    String
-  endpoint  String
-  p256dh    String
-  auth      String
-  userAgent String?
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, endpoint])
   @@index([userId])
+  @@index([userId, isActive])
 }
 
+// ==============================
+// Debts / Hutang
+// ==============================
+
+model Debt {
+  id                  String    @id @default(uuid())
+  userId              String
+  description         String
+  amount              Float
+  debtType            String    @default("owed_by_me")
+  personName          String
+  dueDate             DateTime?
+  isPaid              Boolean   @default(false)
+  paidAt              DateTime?
+  linkedTransactionId String?
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isPaid])
+}
