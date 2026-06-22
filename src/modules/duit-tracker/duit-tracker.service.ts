@@ -35,6 +35,13 @@ const INCOME_KEYWORDS: Record<string, string[]> = {
 const DEBT_KEYWORDS = ['hutang', 'utang', 'pinjam', 'pinjem', 'ngutang', 'minjem', 'piutang'];
 const DEBT_TO_ME_KEYWORDS = ['piutang', 'ngasih pinjam', 'dipinjem', 'diutang'];
 
+// Bill/Tagihan keywords
+const BILL_KEYWORDS = ['tagihan', 'langganan', 'subscribe', 'subscription', 'bayar bulanan', 'bayar tiap bulan', 'iuran', 'cicilan'];
+const BILL_SERVICES = ['wifi', 'internet', 'listrik', 'pdam', 'spotify', 'netflix', 'youtube premium', 'gym', 'kos bulanan', 'indihome', 'biznet', 'first media'];
+
+// Wishlist keywords
+const WISHLIST_KEYWORDS = ['pengen beli', 'mau beli', 'nabung untuk', 'target beli', 'rencana beli', 'impian', 'idaman', 'wishlist', 'pengin', 'kepengen', 'ingin beli', 'nyicil beli'];
+
 function parseAmountFromText(text: string): number | null {
   const lower = text.toLowerCase().replace(/\./g, '').replace(/,/g, '');
   // "25rb" / "25ribu" / "25k"
@@ -149,6 +156,10 @@ interface ParseResult {
   isDebt?: boolean;
   debtType?: string;
   personName?: string;
+  isBill?: boolean;
+  dueDay?: number;
+  isWishlist?: boolean;
+  priority?: string;
 }
 
 function ruleBasedParse(text: string): ParseResult | null {
@@ -172,6 +183,37 @@ function ruleBasedParse(text: string): ParseResult | null {
       isDebt: true,
       debtType: isToMe ? 'owed_to_me' : 'owed_by_me',
       personName: personName || undefined,
+    };
+  }
+
+  // Check bill/tagihan keywords
+  if (BILL_KEYWORDS.some(kw => lower.includes(kw)) || BILL_SERVICES.some(kw => lower.includes(kw))) {
+    const label = text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text;
+    // Try to extract due day
+    const dueDayMatch = lower.match(/(?:tanggal|tgl|tg)\s*(\d{1,2})/);
+    const dueDay = dueDayMatch ? parseInt(dueDayMatch[1]) : undefined;
+    return {
+      amount,
+      type: 'expense',
+      category: 'tagihan',
+      label,
+      date,
+      isBill: true,
+      dueDay,
+    };
+  }
+
+  // Check wishlist keywords
+  if (WISHLIST_KEYWORDS.some(kw => lower.includes(kw))) {
+    const label = text.replace(/[\d.,]+\s*(rb|ribu|k|jt|juta|m)?\s*/gi, '').trim() || text;
+    return {
+      amount,
+      type: 'expense',
+      category: 'belanja',
+      label,
+      date,
+      isWishlist: true,
+      priority: 'medium',
     };
   }
 
@@ -484,16 +526,25 @@ export class DuitTrackerService {
 
     // Priority 2: AI parsing (jika rule tidak match)
     return this.aiJob.run(userId, 'parse_transaction', async () => {
-    const prompt = `Kamu adalah asisten keuangan. Parse input berikut menjadi transaksi keuangan ATAU hutang.
+    const prompt = `Kamu adalah asisten keuangan. Parse input berikut menjadi transaksi keuangan, hutang, tagihan rutin, ATAU wishlist.
 Input: "${text}"
 Hari ini: ${new Date().toISOString().split('T')[0]}
 
 Kategori expense: makanan, minuman, transportasi, belanja, hiburan, tagihan, kesehatan, pendidikan, kos, hutang, lainnya
 Kategori income: gaji, freelance, kiriman, beasiswa, bonus, jualan, lainnya
 
-Jika input menyebut hutang/utang/pinjam/pinjem/ngutang, set isDebt=true.
-- "hutang ke X" / "pinjam dari X" → debtType: "owed_by_me"
-- "piutang dari X" / "X hutang ke saya" → debtType: "owed_to_me"
+DETEKSI TIPE:
+1. HUTANG: Jika input menyebut hutang/utang/pinjam/pinjem/ngutang, set isDebt=true.
+   - "hutang ke X" / "pinjam dari X" → debtType: "owed_by_me"
+   - "piutang dari X" / "X hutang ke saya" → debtType: "owed_to_me"
+
+2. TAGIHAN RUTIN: Jika input menyebut tagihan bulanan/rutin/langganan/subscribe/bayar tiap bulan (misal: wifi, listrik, spotify, netflix, kos, internet, gym), set isBill=true.
+   - Deteksi tanggal jatuh tempo (dueDay) jika disebutkan.
+
+3. WISHLIST: Jika input menyebut pengen beli/mau beli/nabung untuk/target beli/rencana beli/impian/idaman (barang yang belum dibeli, rencana masa depan), set isWishlist=true.
+   - Deteksi prioritas: high/medium/low
+
+4. TRANSAKSI BIASA: Jika bukan hutang, tagihan, atau wishlist.
 
 Respond dalam JSON format:
 {
@@ -503,9 +554,13 @@ Respond dalam JSON format:
   "label": string (deskripsi singkat Bahasa Indonesia),
   "note": string | null,
   "date": string | null (format YYYY-MM-DD, null jika tidak disebutkan),
-  "isDebt": boolean (true jika ini hutang/piutang),
+  "isDebt": boolean,
   "debtType": "owed_by_me" | "owed_to_me" | null,
-  "personName": string | null (nama orang yang terkait hutang)
+  "personName": string | null,
+  "isBill": boolean,
+  "dueDay": number | null (tanggal jatuh tempo 1-31),
+  "isWishlist": boolean,
+  "priority": "high" | "medium" | "low" | null
 }
 
 Hanya respond JSON, tanpa markdown.`;
@@ -920,5 +975,55 @@ Catatan:
       debtsLent: activeDebts.filter(d => d.debtType === 'owed_to_me').map(d => ({ id: d.id, description: d.description, amount: d.amount, personName: d.personName })),
       totalDebtLent,
     };
+  }
+
+  // ── Wishlist / Rencana Belanja ──
+
+  async getWishlist(userId: string) {
+    return this.prisma.wishlistItem.findMany({
+      where: { userId },
+      orderBy: [{ isPurchased: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async createWishlistItem(userId: string, dto: { name: string; estimatedPrice: number; priority?: string; category?: string; targetDate?: string; notes?: string; url?: string }) {
+    return this.prisma.wishlistItem.create({
+      data: {
+        userId,
+        name: dto.name,
+        estimatedPrice: dto.estimatedPrice,
+        priority: dto.priority || 'medium',
+        category: dto.category,
+        targetDate: dto.targetDate ? new Date(dto.targetDate) : null,
+        notes: dto.notes,
+        url: dto.url,
+      },
+    });
+  }
+
+  async updateWishlistItem(userId: string, id: string, dto: { name?: string; estimatedPrice?: number; priority?: string; category?: string; targetDate?: string; notes?: string; url?: string }) {
+    await this.prisma.wishlistItem.findFirstOrThrow({ where: { id, userId } });
+    const data: any = { ...dto };
+    if (dto.targetDate !== undefined) {
+      data.targetDate = dto.targetDate ? new Date(dto.targetDate) : null;
+    }
+    return this.prisma.wishlistItem.update({ where: { id }, data });
+  }
+
+  async deleteWishlistItem(userId: string, id: string) {
+    await this.prisma.wishlistItem.findFirstOrThrow({ where: { id, userId } });
+    return this.prisma.wishlistItem.delete({ where: { id } });
+  }
+
+  async markWishlistPurchased(userId: string, id: string, linkedTransactionId?: string) {
+    await this.prisma.wishlistItem.findFirstOrThrow({ where: { id, userId } });
+    return this.prisma.wishlistItem.update({
+      where: { id },
+      data: {
+        isPurchased: true,
+        purchasedAt: new Date(),
+        linkedTransactionId: linkedTransactionId || null,
+      },
+    });
   }
 }

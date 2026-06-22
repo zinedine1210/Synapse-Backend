@@ -200,4 +200,31 @@ export class DuitTrackerController {
   getFinancialOverview(@GetUser() user: User) {
     return this.svc.getFinancialOverview(user.id);
   }
+
+  // ── Wishlist / Rencana Belanja ──
+
+  @Get('wishlist')
+  getWishlist(@GetUser() user: User) {
+    return this.svc.getWishlist(user.id);
+  }
+
+  @Post('wishlist')
+  createWishlistItem(@GetUser() user: User, @Body() dto: { name: string; estimatedPrice: number; priority?: string; category?: string; targetDate?: string; notes?: string; url?: string }) {
+    return this.svc.createWishlistItem(user.id, dto);
+  }
+
+  @Patch('wishlist/:id')
+  updateWishlistItem(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { name?: string; estimatedPrice?: number; priority?: string; category?: string; targetDate?: string; notes?: string; url?: string }) {
+    return this.svc.updateWishlistItem(user.id, id, dto);
+  }
+
+  @Delete('wishlist/:id')
+  deleteWishlistItem(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteWishlistItem(user.id, id);
+  }
+
+  @Post('wishlist/:id/purchase')
+  markWishlistPurchased(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto?: { linkedTransactionId?: string }) {
+    return this.svc.markWishlistPurchased(user.id, id, dto?.linkedTransactionId);
+  }
 }

@@ -96,6 +96,7 @@ model User {
   profile                UserProfile?
   recurringBills         RecurringBill[]
   debts                  Debt[]
+  wishlistItems          WishlistItem[]
   aiJobs                 AiJob[]
   aiUsageLogs            AiUsageLog[]
 }
@@ -1204,4 +1205,30 @@ model Debt {
 
   @@index([userId])
   @@index([userId, isPaid])
+}
+
+// ==============================
+// Wishlist / Rencana Belanja
+// ==============================
+
+model WishlistItem {
+  id                  String    @id @default(uuid())
+  userId              String
+  name                String
+  estimatedPrice      Float
+  priority            String    @default("medium") // high, medium, low
+  category            String?
+  targetDate          DateTime?
+  notes               String?
+  url                 String?   // link produk/toko
+  isPurchased         Boolean   @default(false)
+  purchasedAt         DateTime?
+  linkedTransactionId String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isPurchased])
 }
