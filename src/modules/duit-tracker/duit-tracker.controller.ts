@@ -227,4 +227,76 @@ export class DuitTrackerController {
   markWishlistPurchased(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto?: { linkedTransactionId?: string }) {
     return this.svc.markWishlistPurchased(user.id, id, dto?.linkedTransactionId);
   }
+
+  // ── Budget Challenge & Streak ──
+
+  @Get('challenges')
+  getChallenges(@GetUser() user: User) {
+    return this.svc.getChallenges(user.id);
+  }
+
+  @Post('challenges')
+  createChallenge(@GetUser() user: User, @Body() dto: { title: string; description?: string; type: string; targetAmount?: number; targetDays?: number; category?: string }) {
+    return this.svc.createChallenge(user.id, dto);
+  }
+
+  @Post('challenges/:id/progress')
+  updateChallengeProgress(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.updateChallengeProgress(user.id, id);
+  }
+
+  @Delete('challenges/:id')
+  deleteChallenge(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteChallenge(user.id, id);
+  }
+
+  // ── Custom Categories ──
+
+  @Get('categories')
+  getCustomCategories(@GetUser() user: User) {
+    return this.svc.getCustomCategories(user.id);
+  }
+
+  @Post('categories')
+  createCustomCategory(@GetUser() user: User, @Body() dto: { name: string; emoji?: string; type?: string; color?: string }) {
+    return this.svc.createCustomCategory(user.id, dto);
+  }
+
+  @Patch('categories/:id')
+  updateCustomCategory(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { name?: string; emoji?: string; color?: string; sortOrder?: number }) {
+    return this.svc.updateCustomCategory(user.id, id, dto);
+  }
+
+  @Delete('categories/:id')
+  deleteCustomCategory(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteCustomCategory(user.id, id);
+  }
+
+  // ── Spending Comparison ──
+
+  @Get('comparison')
+  getSpendingComparison(@GetUser() user: User) {
+    return this.svc.getSpendingComparison(user.id);
+  }
+
+  // ── Financial Forecast ──
+
+  @Get('forecast')
+  getFinancialForecast(@GetUser() user: User) {
+    return this.svc.getFinancialForecast(user.id);
+  }
+
+  // ── CSV Bulk Import ──
+
+  @Post('bulk-import')
+  bulkImport(@GetUser() user: User, @Body() dto: { transactions: { amount: number; type: string; category: string; label: string; note?: string; date?: string }[] }) {
+    return this.svc.bulkCreateTransactions(user.id, dto.transactions);
+  }
+
+  // ── Smart Reminders ──
+
+  @Get('reminders')
+  getReminders(@GetUser() user: User) {
+    return this.svc.getReminders(user.id);
+  }
 }

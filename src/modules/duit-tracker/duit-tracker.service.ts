@@ -1026,4 +1026,360 @@ Catatan:
       },
     });
   }
+
+  // ══════════════════════════════════════════════════════════════════
+  // FEATURE: Budget Challenge & Streak
+  // ══════════════════════════════════════════════════════════════════
+
+  async getChallenges(userId: string) {
+    const challenges = await this.prisma.budgetChallenge.findMany({
+      where: { userId },
+      orderBy: [{ isActive: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    // Auto-check progress for active challenges
+    const now = new Date();
+    for (const ch of challenges) {
+      if (ch.isActive && ch.endDate < now) {
+        await this.prisma.budgetChallenge.update({
+          where: { id: ch.id },
+          data: { isActive: false },
+        });
+        ch.isActive = false;
+      }
+    }
+    return challenges;
+  }
+
+  async createChallenge(userId: string, dto: { title: string; description?: string; type: string; targetAmount?: number; targetDays?: number; category?: string }) {
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + (dto.targetDays || 7));
+
+    return this.prisma.budgetChallenge.create({
+      data: {
+        userId,
+        title: dto.title,
+        description: dto.description,
+        type: dto.type || 'daily_limit',
+        targetAmount: dto.targetAmount,
+        targetDays: dto.targetDays || 7,
+        category: dto.category,
+        startDate,
+        endDate,
+      },
+    });
+  }
+
+  async updateChallengeProgress(userId: string, challengeId: string) {
+    const challenge = await this.prisma.budgetChallenge.findFirstOrThrow({ where: { id: challengeId, userId } });
+    if (!challenge.isActive) return challenge;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Get today's spending
+    const todaySpending = await this.prisma.transaction.aggregate({
+      where: {
+        userId,
+        type: 'expense',
+        date: { gte: today, lt: tomorrow },
+        ...(challenge.category ? { category: challenge.category } : {}),
+      },
+      _sum: { amount: true },
+    });
+
+    const spent = todaySpending._sum.amount || 0;
+    const passed = challenge.targetAmount ? spent <= challenge.targetAmount : spent === 0;
+
+    const update: any = {};
+    if (passed) {
+      update.currentStreak = challenge.currentStreak + 1;
+      update.completedDays = challenge.completedDays + 1;
+      if (update.currentStreak > challenge.bestStreak) {
+        update.bestStreak = update.currentStreak;
+      }
+    } else {
+      update.currentStreak = 0;
+      update.failedDays = challenge.failedDays + 1;
+    }
+
+    return this.prisma.budgetChallenge.update({ where: { id: challengeId }, data: update });
+  }
+
+  async deleteChallenge(userId: string, id: string) {
+    await this.prisma.budgetChallenge.findFirstOrThrow({ where: { id, userId } });
+    return this.prisma.budgetChallenge.delete({ where: { id } });
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // FEATURE: Custom Categories
+  // ══════════════════════════════════════════════════════════════════
+
+  async getCustomCategories(userId: string) {
+    return this.prisma.customCategory.findMany({
+      where: { userId },
+      orderBy: [{ type: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createCustomCategory(userId: string, dto: { name: string; emoji?: string; type?: string; color?: string }) {
+    return this.prisma.customCategory.create({
+      data: {
+        userId,
+        name: dto.name.toLowerCase().trim(),
+        emoji: dto.emoji || '📦',
+        type: dto.type || 'expense',
+        color: dto.color,
+      },
+    });
+  }
+
+  async updateCustomCategory(userId: string, id: string, dto: { name?: string; emoji?: string; color?: string; sortOrder?: number }) {
+    await this.prisma.customCategory.findFirstOrThrow({ where: { id, userId } });
+    const data: any = { ...dto };
+    if (dto.name) data.name = dto.name.toLowerCase().trim();
+    return this.prisma.customCategory.update({ where: { id }, data });
+  }
+
+  async deleteCustomCategory(userId: string, id: string) {
+    await this.prisma.customCategory.findFirstOrThrow({ where: { id, userId } });
+    return this.prisma.customCategory.delete({ where: { id } });
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // FEATURE: Spending Comparison (Anonymous Peer)
+  // ══════════════════════════════════════════════════════════════════
+
+  async getSpendingComparison(userId: string) {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Get user's spending this month
+    const userSpending = await this.prisma.transaction.aggregate({
+      where: { userId, type: 'expense', date: { gte: monthStart } },
+      _sum: { amount: true },
+      _count: true,
+    });
+
+    // Get aggregate stats from all users this month (anonymous)
+    const allUsers = await this.prisma.transaction.groupBy({
+      by: ['userId'],
+      where: { type: 'expense', date: { gte: monthStart } },
+      _sum: { amount: true },
+      _count: true,
+    });
+
+    if (allUsers.length < 2) {
+      return { userTotal: userSpending._sum.amount || 0, avgTotal: 0, percentile: 50, totalUsers: allUsers.length, categoryComparison: [] };
+    }
+
+    const amounts = allUsers.map(u => u._sum.amount || 0).sort((a, b) => a - b);
+    const userAmount = userSpending._sum.amount || 0;
+    const avgTotal = amounts.reduce((s, a) => s + a, 0) / amounts.length;
+    const percentile = Math.round((amounts.filter(a => a <= userAmount).length / amounts.length) * 100);
+
+    // Per-category comparison
+    const userCats = await this.prisma.transaction.groupBy({
+      by: ['category'],
+      where: { userId, type: 'expense', date: { gte: monthStart } },
+      _sum: { amount: true },
+    });
+
+    const allCats = await this.prisma.transaction.groupBy({
+      by: ['category'],
+      where: { type: 'expense', date: { gte: monthStart } },
+      _sum: { amount: true },
+      _count: true,
+    });
+
+    const categoryComparison = userCats.map(uc => {
+      const allCat = allCats.find(ac => ac.category === uc.category);
+      const avgCat = allCat ? (allCat._sum.amount || 0) / allUsers.length : 0;
+      return {
+        category: uc.category,
+        userAmount: uc._sum.amount || 0,
+        avgAmount: Math.round(avgCat),
+        diff: Math.round(((uc._sum.amount || 0) - avgCat) / (avgCat || 1) * 100),
+      };
+    }).sort((a, b) => b.diff - a.diff);
+
+    return { userTotal: userAmount, avgTotal: Math.round(avgTotal), percentile, totalUsers: allUsers.length, categoryComparison };
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // FEATURE: Financial Forecast
+  // ══════════════════════════════════════════════════════════════════
+
+  async getFinancialForecast(userId: string) {
+    const now = new Date();
+    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+
+    // Get 3 months of transactions
+    const transactions = await this.prisma.transaction.findMany({
+      where: { userId, date: { gte: threeMonthsAgo } },
+      orderBy: { date: 'asc' },
+    });
+
+    if (transactions.length < 5) {
+      return { hasEnoughData: false };
+    }
+
+    // Monthly averages
+    const monthlyData: Record<string, { income: number; expense: number }> = {};
+    for (const tx of transactions) {
+      const key = `${tx.date.getFullYear()}-${tx.date.getMonth() + 1}`;
+      if (!monthlyData[key]) monthlyData[key] = { income: 0, expense: 0 };
+      if (tx.type === 'income') monthlyData[key].income += tx.amount;
+      else monthlyData[key].expense += tx.amount;
+    }
+
+    const months = Object.values(monthlyData);
+    const avgIncome = months.reduce((s, m) => s + m.income, 0) / months.length;
+    const avgExpense = months.reduce((s, m) => s + m.expense, 0) / months.length;
+    const avgSaving = avgIncome - avgExpense;
+
+    // This month progress
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisMonthTx = transactions.filter(t => t.date >= thisMonthStart);
+    const thisMonthExpense = thisMonthTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const thisMonthIncome = thisMonthTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+
+    // Days calculation
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysPassed = now.getDate();
+    const daysRemaining = daysInMonth - daysPassed;
+    const dailyBurnRate = daysPassed > 0 ? thisMonthExpense / daysPassed : 0;
+    const projectedMonthExpense = thisMonthExpense + (dailyBurnRate * daysRemaining);
+
+    // Survival days (how many days until income runs out based on current balance)
+    const currentBalance = thisMonthIncome - thisMonthExpense;
+    const survivalDays = dailyBurnRate > 0 ? Math.max(0, Math.round(currentBalance / dailyBurnRate)) : 999;
+
+    // Wishlist affordability
+    const wishlistItems = await this.prisma.wishlistItem.findMany({
+      where: { userId, isPurchased: false },
+      orderBy: { priority: 'asc' },
+      take: 5,
+    });
+
+    const wishlistForecast = wishlistItems.map(item => {
+      const monthsNeeded = avgSaving > 0 ? Math.ceil(item.estimatedPrice / avgSaving) : null;
+      const targetDate = monthsNeeded ? new Date(now.getFullYear(), now.getMonth() + monthsNeeded, now.getDate()) : null;
+      return { name: item.name, price: item.estimatedPrice, monthsNeeded, targetDate: targetDate?.toISOString().split('T')[0] };
+    });
+
+    return {
+      hasEnoughData: true,
+      avgIncome: Math.round(avgIncome),
+      avgExpense: Math.round(avgExpense),
+      avgSaving: Math.round(avgSaving),
+      thisMonthExpense: Math.round(thisMonthExpense),
+      thisMonthIncome: Math.round(thisMonthIncome),
+      projectedMonthExpense: Math.round(projectedMonthExpense),
+      dailyBurnRate: Math.round(dailyBurnRate),
+      survivalDays,
+      daysRemaining,
+      wishlistForecast,
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // FEATURE: CSV Import (Bulk create transactions)
+  // ══════════════════════════════════════════════════════════════════
+
+  async bulkCreateTransactions(userId: string, transactions: { amount: number; type: string; category: string; label: string; note?: string; date?: string }[]) {
+    const created = await this.prisma.transaction.createMany({
+      data: transactions.map(tx => ({
+        userId,
+        amount: tx.amount,
+        type: tx.type,
+        category: tx.category,
+        label: tx.label,
+        note: tx.note,
+        inputMethod: 'csv_import',
+        date: tx.date ? new Date(tx.date) : new Date(),
+      })),
+    });
+    return { count: created.count };
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // FEATURE: Smart Reminders (due bills/debts check)
+  // ══════════════════════════════════════════════════════════════════
+
+  async getReminders(userId: string) {
+    const now = new Date();
+    const today = now.getDate();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Bills due soon (within 3 days) or overdue
+    const bills = await this.prisma.recurringBill.findMany({
+      where: { userId, isActive: true },
+    });
+
+    const dueBills = bills.filter(b => {
+      const isPaid = b.lastPaidFor && b.lastPaidFor >= thisMonthStart;
+      if (isPaid) return false;
+      const daysUntilDue = b.dueDay - today;
+      return daysUntilDue <= 3 && daysUntilDue >= -7; // 3 days before to 7 days after
+    }).map(b => ({
+      id: b.id,
+      name: b.name,
+      amount: b.amount,
+      dueDay: b.dueDay,
+      daysUntilDue: b.dueDay - today,
+      isOverdue: b.dueDay < today,
+    }));
+
+    // Debts approaching due date (within 7 days)
+    const sevenDaysLater = new Date(now);
+    sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+
+    const dueDebts = await this.prisma.debt.findMany({
+      where: {
+        userId,
+        isPaid: false,
+        dueDate: { lte: sevenDaysLater },
+      },
+    });
+
+    const debtReminders = dueDebts.map(d => ({
+      id: d.id,
+      description: d.description,
+      amount: d.amount,
+      personName: d.personName,
+      debtType: d.debtType,
+      dueDate: d.dueDate?.toISOString().split('T')[0],
+      daysUntilDue: d.dueDate ? Math.ceil((d.dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : null,
+      isOverdue: d.dueDate ? d.dueDate < now : false,
+    }));
+
+    // Daily spending alert
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
+    const todaySpent = await this.prisma.transaction.aggregate({
+      where: { userId, type: 'expense', date: { gte: todayStart, lt: todayEnd } },
+      _sum: { amount: true },
+    });
+
+    // Average daily spending this month
+    const monthExpense = await this.prisma.transaction.aggregate({
+      where: { userId, type: 'expense', date: { gte: thisMonthStart } },
+      _sum: { amount: true },
+    });
+    const avgDaily = today > 0 ? (monthExpense._sum.amount || 0) / today : 0;
+    const todayAmount = todaySpent._sum.amount || 0;
+    const isAboveAverage = todayAmount > avgDaily * 1.5;
+
+    return {
+      dueBills,
+      dueDebts: debtReminders,
+      dailySpending: { today: Math.round(todayAmount), average: Math.round(avgDaily), isAboveAverage },
+    };
+  }
 }

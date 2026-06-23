@@ -67,6 +67,7 @@ export class TodoService {
         dueTime: dto.dueTime,
         priority: dto.priority ?? 'medium',
         category: dto.category,
+        tags: dto.tags ?? [],
       },
       include: { reminders: true },
     });
@@ -478,5 +479,59 @@ Hanya respond JSON, tanpa markdown.`;
     });
 
     return timeline;
+  }
+
+  // ─── Bulk operations ────────────────────────────────────────────────
+
+  async bulkDelete(userId: string, ids: string[]) {
+    const result = await this.prisma.personalTodo.deleteMany({
+      where: { id: { in: ids }, userId },
+    });
+    return { deleted: result.count };
+  }
+
+  async bulkToggleDone(userId: string, ids: string[], done: boolean) {
+    const result = await this.prisma.personalTodo.updateMany({
+      where: { id: { in: ids }, userId },
+      data: { status: done ? 'done' : 'pending', completedAt: done ? new Date() : null },
+    });
+    return { updated: result.count };
+  }
+
+  async bulkUpdateCategory(userId: string, ids: string[], category: string) {
+    const result = await this.prisma.personalTodo.updateMany({
+      where: { id: { in: ids }, userId },
+      data: { category },
+    });
+    return { updated: result.count };
+  }
+
+  async bulkUpdatePriority(userId: string, ids: string[], priority: string) {
+    const result = await this.prisma.personalTodo.updateMany({
+      where: { id: { in: ids }, userId },
+      data: { priority },
+    });
+    return { updated: result.count };
+  }
+
+  // ─── Reminders ──────────────────────────────────────────────────────
+
+  async setReminder(userId: string, todoId: string, remindAt: Date) {
+    const todo = await this.prisma.personalTodo.findFirst({ where: { id: todoId, userId } });
+    if (!todo) throw new NotFoundException('To-do tidak ditemukan.');
+
+    // Upsert — one reminder per todo for simplicity
+    const existing = await this.prisma.todoReminder.findFirst({ where: { todoId } });
+    if (existing) {
+      return this.prisma.todoReminder.update({ where: { id: existing.id }, data: { remindAt, sent: false } });
+    }
+    return this.prisma.todoReminder.create({ data: { todoId, remindAt } });
+  }
+
+  async deleteReminder(userId: string, todoId: string) {
+    const todo = await this.prisma.personalTodo.findFirst({ where: { id: todoId, userId } });
+    if (!todo) throw new NotFoundException('To-do tidak ditemukan.');
+    await this.prisma.todoReminder.deleteMany({ where: { todoId } });
+    return { message: 'Reminder dihapus.' };
   }
 }

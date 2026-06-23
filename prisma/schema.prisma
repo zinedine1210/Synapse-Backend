@@ -97,6 +97,8 @@ model User {
   recurringBills         RecurringBill[]
   debts                  Debt[]
   wishlistItems          WishlistItem[]
+  budgetChallenges       BudgetChallenge[]
+  customCategories       CustomCategory[]
   aiJobs                 AiJob[]
   aiUsageLogs            AiUsageLog[]
 }
@@ -679,6 +681,7 @@ model PersonalTodo {
   dueTime      String?
   priority     String    @default("medium")
   category     String?
+  tags         String[]  @default([])
   status       String    @default("pending")
   completedAt  DateTime?
   sortOrder    Int       @default(0)
@@ -1231,4 +1234,53 @@ model WishlistItem {
 
   @@index([userId])
   @@index([userId, isPurchased])
+}
+
+// ==============================
+// Budget Challenge & Streak
+// ==============================
+
+model BudgetChallenge {
+  id            String    @id @default(uuid())
+  userId        String
+  title         String
+  description   String?
+  type          String    @default("daily_limit") // daily_limit, weekly_limit, no_spend_day, category_limit
+  targetAmount  Float?    // spending limit amount
+  targetDays    Int       @default(7) // challenge duration in days
+  category      String?   // optional: category-specific challenge
+  startDate     DateTime
+  endDate       DateTime
+  currentStreak Int       @default(0)
+  bestStreak    Int       @default(0)
+  isActive      Boolean   @default(true)
+  completedDays Int       @default(0)
+  failedDays    Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isActive])
+}
+
+// ==============================
+// Custom Categories
+// ==============================
+
+model CustomCategory {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  emoji     String   @default("📦")
+  type      String   @default("expense") // income | expense
+  color     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name, type])
+  @@index([userId])
 }

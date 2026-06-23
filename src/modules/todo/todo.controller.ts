@@ -124,4 +124,49 @@ export class TodoController {
   ) {
     return this.svc.setRecurrence(user.id, id, dto);
   }
+
+  // ==============================
+  // Bulk operations
+  // ==============================
+
+  @Post('bulk/delete')
+  bulkDelete(@GetUser() user: User, @Body('ids') ids: string[]) {
+    return this.svc.bulkDelete(user.id, ids);
+  }
+
+  @Post('bulk/toggle')
+  bulkToggleDone(@GetUser() user: User, @Body('ids') ids: string[], @Body('done') done: boolean) {
+    return this.svc.bulkToggleDone(user.id, ids, done);
+  }
+
+  @Post('bulk/category')
+  bulkUpdateCategory(@GetUser() user: User, @Body('ids') ids: string[], @Body('category') category: string) {
+    return this.svc.bulkUpdateCategory(user.id, ids, category);
+  }
+
+  @Post('bulk/priority')
+  bulkUpdatePriority(@GetUser() user: User, @Body('ids') ids: string[], @Body('priority') priority: string) {
+    return this.svc.bulkUpdatePriority(user.id, ids, priority);
+  }
+
+  // ==============================
+  // Reminder endpoints
+  // ==============================
+
+  @Post(':id/reminder')
+  setReminder(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('remindAt') remindAt: string,
+  ) {
+    return this.svc.setReminder(user.id, id, new Date(remindAt));
+  }
+
+  @Delete(':id/reminder')
+  deleteReminder(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.svc.deleteReminder(user.id, id);
+  }
 }

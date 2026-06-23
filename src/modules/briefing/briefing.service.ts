@@ -70,7 +70,7 @@ export class BriefingService {
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
 
     // Gather data
-    const [todos, recentExpenses, classMemberships, trees, gamification, profile, monthlyCategorySums, budgets] = await Promise.all([
+    const [todos, recentExpenses, classMemberships, trees, gamification, profile, monthlyCategorySums, budgets, unpaidBills, activeDebts, activeChallenges, wishlistItems] = await Promise.all([
       // All pending todos with due dates
       this.prisma.personalTodo.findMany({
         where: { userId, status: 'pending' },
@@ -128,6 +128,38 @@ export class BriefingService {
       this.prisma.categoryBudget.findMany({
         where: { userId, month: today.getMonth() + 1, year: today.getFullYear() },
         select: { category: true, amount: true },
+      }),
+      // Unpaid recurring bills this month
+      this.prisma.recurringBill.findMany({
+        where: {
+          userId,
+          isActive: true,
+          OR: [
+            { lastPaidFor: null },
+            { lastPaidFor: { lt: monthStart } },
+          ],
+        },
+        select: { name: true, amount: true, dueDay: true },
+        take: 10,
+      }),
+      // Active debts
+      this.prisma.debt.findMany({
+        where: { userId, isPaid: false },
+        select: { description: true, amount: true, debtType: true, personName: true, dueDate: true },
+        take: 10,
+      }),
+      // Active budget challenges
+      this.prisma.budgetChallenge.findMany({
+        where: { userId, isActive: true },
+        select: { title: true, currentStreak: true, bestStreak: true, targetAmount: true, completedDays: true, targetDays: true },
+        take: 5,
+      }),
+      // Pending wishlist items
+      this.prisma.wishlistItem.findMany({
+        where: { userId, isPurchased: false },
+        select: { name: true, estimatedPrice: true, priority: true },
+        orderBy: { priority: 'asc' },
+        take: 5,
       }),
     ]);
 
@@ -230,6 +262,41 @@ export class BriefingService {
         ].filter(Boolean).join('\n')
       : '';
 
+    // --- 8.9: Bills / Tagihan due soon ---
+    const billsText = unpaidBills.length > 0
+      ? unpaidBills.map((b) => {
+          const daysUntilDue = b.dueDay - today.getDate();
+          const status = daysUntilDue < 0 ? '⚠️ TERLAMBAT' : daysUntilDue <= 3 ? '⏰ SEGERA' : '';
+          return `- ${b.name}: Rp${b.amount.toLocaleString('id-ID')} (tgl ${b.dueDay}) ${status}`;
+        }).join('\n')
+      : '';
+
+    // --- 8.10: Active debts ---
+    const debtsOwed = activeDebts.filter(d => d.debtType === 'owed_by_me');
+    const debtsLent = activeDebts.filter(d => d.debtType === 'owed_to_me');
+    const totalOwed = debtsOwed.reduce((s, d) => s + d.amount, 0);
+    const totalLent = debtsLent.reduce((s, d) => s + d.amount, 0);
+    const debtsText = activeDebts.length > 0
+      ? [
+          debtsOwed.length > 0 ? `Hutang kamu: Rp${totalOwed.toLocaleString('id-ID')} (${debtsOwed.length} orang)` : '',
+          debtsLent.length > 0 ? `Piutang kamu: Rp${totalLent.toLocaleString('id-ID')} (${debtsLent.length} orang)` : '',
+          ...activeDebts.filter(d => d.dueDate && d.dueDate <= new Date(today.getTime() + 7 * 86400000)).map(d => {
+            const daysLeft = Math.ceil((d.dueDate!.getTime() - today.getTime()) / 86400000);
+            return `- ${d.description} (${d.personName}): Rp${d.amount.toLocaleString('id-ID')} — ${daysLeft <= 0 ? 'JATUH TEMPO!' : `${daysLeft} hari lagi`}`;
+          }),
+        ].filter(Boolean).join('\n')
+      : '';
+
+    // --- 8.11: Active budget challenges ---
+    const challengesText = activeChallenges.length > 0
+      ? activeChallenges.map(c => `- ${c.title}: streak ${c.currentStreak}🔥 (best: ${c.bestStreak}) — ${c.completedDays}/${c.targetDays} hari${c.targetAmount ? `, target Rp${c.targetAmount.toLocaleString('id-ID')}/hari` : ''}`).join('\n')
+      : '';
+
+    // --- 8.12: Wishlist items ---
+    const wishlistText = wishlistItems.length > 0
+      ? wishlistItems.map(w => `- ${w.name}: Rp${w.estimatedPrice.toLocaleString('id-ID')} (${w.priority === 'high' ? '🔴 prioritas tinggi' : w.priority === 'medium' ? '🟡 sedang' : '⚪ rendah'})`).join('\n')
+      : '';
+
     // Build AI prompt with structured section markers for frontend parsing
     const prompt = `Kamu adalah asisten pribadi yang ramah untuk anak muda. Buat briefing harian yang terstruktur dan personal.
 
@@ -252,6 +319,10 @@ ${budgetText ? `\nBudget:\n${budgetText}` : ''}
 📚 JADWAL KELAS HARI INI:
 ${classScheduleText}
 ${treesText ? `\n🌳 PROGRESS TABUNGAN:\n${treesText}` : ''}
+${billsText ? `\n💳 TAGIHAN BULAN INI:\n${billsText}` : ''}
+${debtsText ? `\n🤝 HUTANG & PIUTANG:\n${debtsText}` : ''}
+${challengesText ? `\n🔥 BUDGET CHALLENGE AKTIF:\n${challengesText}` : ''}
+${wishlistText ? `\n🛒 WISHLIST:\n${wishlistText}` : ''}
 
 🎮 GAMIFIKASI:
 ${gamifText}
@@ -272,11 +343,23 @@ Buat briefing menggunakan section markers berikut agar bisa di-parse oleh fronte
 <!-- SECTION:keuangan -->
 (Analisis keuangan: sebutkan 3 pengeluaran terbesar 24 jam terakhir + total bulan ini + warning jika budget hampir habis. Berikan saran singkat. Jika tidak ada, skip.)
 
+<!-- SECTION:tagihan -->
+(Sebutkan tagihan yang belum dibayar bulan ini, terutama yang sudah lewat/mendekati jatuh tempo. Ingatkan untuk segera bayar. Jika tidak ada, skip.)
+
+<!-- SECTION:hutang -->
+(Rangkum total hutang dan piutang user. Highlight yang mendekati jatuh tempo. Jika tidak ada, skip.)
+
 <!-- SECTION:kelas -->
 (Sebutkan jadwal kelas hari ini: nama kelas, judul pertemuan, JAM, dan RUANGAN. Jika tidak ada kelas, skip section ini.)
 
 <!-- SECTION:tabungan -->
 (Sebutkan nama pohon tabungan dan PERSENTASE progress. Kasih semangat singkat. Jika tidak ada tabungan, skip section ini.)
+
+<!-- SECTION:challenge -->
+(Sebutkan challenge yang aktif, streak saat ini, dan progress. Kasih semangat untuk jaga streak. Jika tidak ada, skip.)
+
+<!-- SECTION:wishlist -->
+(Sebutkan 1-2 item wishlist teratas. Hubungkan dengan tips keuangan (misal: "kurangi ngopi bisa nabung buat X"). Jika tidak ada, skip.)
 
 <!-- SECTION:motivasi -->
 (Tutup dengan 1 kalimat motivasi singkat yang relevan dengan streak/level/konteks user.)
@@ -284,7 +367,7 @@ Buat briefing menggunakan section markers berikut agar bisa di-parse oleh fronte
 ATURAN:
 - Gunakan Bahasa Indonesia, casual tapi informatif
 - Sebutkan data SPESIFIK (judul, angka, tanggal) bukan generik
-- Max 300 kata total
+- Max 400 kata total
 - JANGAN tambahkan section yang tidak ada datanya
 - Format konten di dalam setiap section sebagai markdown (bold, list, dll)`;
 
