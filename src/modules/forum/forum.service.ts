@@ -727,7 +727,7 @@ export class ForumService {
     });
   }
 
-  private async notifyMentions(content: string, classId: string, authorId: string, contextTitle: string, postId: string) {
+  private async notifyMentions(content: string, classId: string, authorId: string, contextTitle: string, _postId: string) {
     const matches = content.match(/@(\w+)/g);
     if (!matches) return;
 

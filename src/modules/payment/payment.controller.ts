@@ -3,7 +3,6 @@ import {
   Post,
   Body,
   UseGuards,
-  Headers,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -42,7 +41,7 @@ export class PaymentController {
   @Post('verify')
   @UseGuards(AuthGuard)
   @Throttle({ default: { ttl: 60000, limit: 5 } })
-  verifyPayment(@GetUser() user: User, @Body('orderId') orderId: string) {
+  verifyPayment(@GetUser() _user: User, @Body('orderId') orderId: string) {
     return this.paymentService.verifyPaymentStatus(orderId);
   }
 }

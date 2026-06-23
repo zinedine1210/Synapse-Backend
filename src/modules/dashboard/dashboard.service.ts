@@ -977,7 +977,6 @@ ATURAN:
     const pendingTasks = results[7].status === 'fulfilled' ? results[7].value : [];
     const unreadForumCount = results[8].status === 'fulfilled' ? results[8].value : 0;
     const unansweredQna = results[9].status === 'fulfilled' ? results[9].value : 0;
-    const recentXp = results[10].status === 'fulfilled' ? results[10].value : [];
 
     // Financial summary
     const income = monthTx.filter((t: any) => t.type === 'income').reduce((s: number, t: any) => s + t.amount, 0);
@@ -1013,7 +1012,6 @@ ATURAN:
     const parts: string[] = [];
     if (deadlines.length > 0) parts.push(`${deadlines.length} deadline mendekat`);
     if (topBudgetAlert) parts.push(`budget ${topBudgetAlert.category} ${topBudgetAlert.percentage}%`);
-    const doneTodos = pendingTodos.filter((t: any) => t.status === 'done').length;
     if (pendingTodos.length > 0) parts.push(`${pendingTodos.length} todo pending`);
     const aiOneLiner = parts.length > 0 ? parts.join(', ') : 'Hari ini terlihat tenang. Nikmati! 🌿';
 

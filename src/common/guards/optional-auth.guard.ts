@@ -2,7 +2,6 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
-  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient } from '@supabase/supabase-js';
@@ -15,7 +14,6 @@ import { PrismaService } from '../../database/prisma.service';
  */
 @Injectable()
 export class OptionalAuthGuard implements CanActivate {
-  private readonly logger = new Logger(OptionalAuthGuard.name);
   private readonly supabase;
 
   constructor(

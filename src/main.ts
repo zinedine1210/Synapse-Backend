@@ -1,7 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { ThrottlerGuard } from '@nestjs/throttler';
 import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';
 import helmet from 'helmet';

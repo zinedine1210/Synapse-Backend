@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
@@ -7,7 +7,6 @@ import { GeneratePredictionDto } from './dto/generate-prediction.dto';
 
 @Injectable()
 export class ExamPredictionService {
-  private readonly logger = new Logger(ExamPredictionService.name);
 
   constructor(
     private readonly prisma: PrismaService,

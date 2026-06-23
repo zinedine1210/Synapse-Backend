@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsPositive, MaxLength, Min } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsPositive, MaxLength } from 'class-validator';
 
 export class CreateKolektifDto {
   @IsString()

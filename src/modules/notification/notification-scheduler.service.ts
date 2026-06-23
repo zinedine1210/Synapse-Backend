@@ -601,7 +601,6 @@ export class NotificationSchedulerService {
     this.logger.log('Running 7-day inactive reminder...');
     try {
       const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-      const threeDaysAgo = new Date(Date.now() - 3 * 86400000);
 
       const users = await this.prisma.user.findMany({
         where: { role: 'USER' },

@@ -127,7 +127,6 @@ function parseDateFromText(text: string): string | null {
 }
 
 function parsePersonName(text: string): string | null {
-  const lower = text.toLowerCase();
   // "hutang ke budi 50k" → "budi"
   // "pinjem dari andi 100k" → "andi"
   const patterns = [

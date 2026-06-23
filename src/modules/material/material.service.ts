@@ -104,7 +104,7 @@ export class MaterialService {
     // Pastikan bucket materials ada di Supabase
     await this.ensureBucketExists('materials');
 
-    const { data: storageData, error: storageError } = await this.supabase.storage
+    const { error: storageError } = await this.supabase.storage
       .from('materials')
       .upload(fileName, file.buffer, { contentType: file.mimetype });
 

@@ -6,7 +6,6 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { PrismaService } from '../../database/prisma.service';
 
 /**
  * AI Rate Limit Guard – membatasi jumlah panggilan AI per user per hari.
@@ -25,7 +24,7 @@ export class AiRateLimitGuard implements CanActivate {
 
   private readonly FALLBACK_LIMIT = 20;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor() {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();

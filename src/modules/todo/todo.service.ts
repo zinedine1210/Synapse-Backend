@@ -154,7 +154,7 @@ export class TodoService {
       });
     }
 
-    const [rawData, total] = await Promise.all([
+    const [rawData] = await Promise.all([
       this.prisma.personalTodo.findMany({
         where,
         include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },

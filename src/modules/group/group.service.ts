@@ -105,7 +105,7 @@ export class GroupService {
   }
 
   /** Get user's group for a specific task */
-  async getUserGroupForTask(taskId: string, userId: string) {
+  async getUserGroupForTask(taskId: string, _userId: string) {
     const task = await this.prisma.task.findUnique({
       where: { id: taskId },
       include: { taskGroup: { include: { members: { include: { user: { select: { id: true, fullName: true, avatarUrl: true } } } } } } },
