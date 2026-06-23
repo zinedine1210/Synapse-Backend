@@ -5,6 +5,14 @@ import { AiUsageService } from '../../common/services/ai-usage.service';
 import { AiJobService } from '../ai-job/ai-job.service';
 import { UpdateBawelSettingDto } from './dto/update-setting.dto';
 
+// Personality stages — evolves based on interaction count
+const PERSONALITY_STAGES = {
+  NEWBIE: { minInteractions: 0, trait: 'baru kenal, agak formal tapi tetap nyinyir' },
+  KENAL: { minInteractions: 10, trait: 'udah mulai ngerti kebiasaan user, lebih personal' },
+  SAHABAT: { minInteractions: 30, trait: 'kayak sahabat sendiri, inget semua kebiasaan, kadang curhat balik' },
+  BESTIE: { minInteractions: 75, trait: 'bestie yang tau segalanya, bisa bacain financial behavior user tanpa ditanya' },
+};
+
 @Injectable()
 export class SiBawelService {
   private readonly logger = new Logger(SiBawelService.name);
@@ -18,7 +26,7 @@ export class SiBawelService {
 
   async getSetting(userId: string) {
     const setting = await this.prisma.bawelSetting.findUnique({ where: { userId } });
-    return setting ?? { userId, level: 'NORMAL', isEnabled: true };
+    return setting ?? { userId, level: 'NORMAL', isEnabled: true, memory: null, personalityStage: 'NEWBIE', interactionCount: 0, lastInteraction: null, financialDna: null };
   }
 
   async updateSetting(userId: string, dto: UpdateBawelSettingDto) {
@@ -47,18 +55,20 @@ export class SiBawelService {
     return { comments, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
-  async chat(userId: string, message: string) {
-    const setting = await this.getSetting(userId);
-
-    // Get rich financial context
+  /**
+   * Build compact financial context string (token-efficient).
+   * Includes: monthly summary, budgets, debts, bills, wishlist, trees
+   */
+  private async buildFinancialContext(userId: string): Promise<string> {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [recentTx, monthSums, categorySums, budgets, trees] = await Promise.all([
+
+    const [recentTx, monthSums, categorySums, budgets, trees, debts, bills, wishlist] = await Promise.all([
       this.prisma.transaction.findMany({
         where: { userId },
         select: { type: true, amount: true, category: true, label: true, date: true },
         orderBy: { date: 'desc' },
-        take: 10,
+        take: 7, // Reduced from 10 for token efficiency
       }),
       this.prisma.transaction.groupBy({
         by: ['type'],
@@ -69,6 +79,8 @@ export class SiBawelService {
         by: ['category'],
         where: { userId, type: 'expense', date: { gte: monthStart } },
         _sum: { amount: true },
+        orderBy: { _sum: { amount: 'desc' } },
+        take: 5, // Top 5 categories only
       }),
       this.prisma.categoryBudget.findMany({
         where: { userId, month: now.getMonth() + 1, year: now.getFullYear() },
@@ -79,58 +91,217 @@ export class SiBawelService {
         select: { name: true, currentAmount: true, targetAmount: true },
         take: 3,
       }),
+      // NEW: Debts context
+      this.prisma.debt.findMany({
+        where: { userId, isPaid: false },
+        select: { description: true, amount: true, debtType: true, personName: true, dueDate: true },
+        take: 5,
+      }),
+      // NEW: Recurring bills context
+      this.prisma.recurringBill.findMany({
+        where: { userId, isActive: true },
+        select: { name: true, amount: true, dueDay: true, lastPaidAt: true },
+      }),
+      // NEW: Wishlist context
+      this.prisma.wishlistItem.findMany({
+        where: { userId, isPurchased: false },
+        select: { name: true, estimatedPrice: true, priority: true },
+        orderBy: { priority: 'asc' },
+        take: 3,
+      }),
     ]);
 
     const monthIncome = monthSums.find(g => g.type === 'income')?._sum?.amount || 0;
     const monthExpense = monthSums.find(g => g.type === 'expense')?._sum?.amount || 0;
 
+    // Compact budget status
     const byCategory: Record<string, number> = {};
-    categorySums.forEach(g => {
-      byCategory[g.category] = g._sum.amount || 0;
+    categorySums.forEach(g => { byCategory[g.category] = g._sum.amount || 0; });
+    const budgetLines = budgets.map(b => {
+      const spent = byCategory[b.category] ?? 0;
+      const pct = Math.round((spent / b.amount) * 100);
+      return `${b.category}:${pct}%`;
+    }).join(', ');
+
+    // Compact transaction list
+    const txLines = recentTx.map(t =>
+      `${t.type === 'income' ? '+' : '-'}${t.amount}(${t.category})`
+    ).join('; ');
+
+    // Compact debt summary
+    const totalDebtOwed = debts.filter(d => d.debtType === 'owed_by_me').reduce((s, d) => s + d.amount, 0);
+    const totalDebtLent = debts.filter(d => d.debtType === 'owed_to_me').reduce((s, d) => s + d.amount, 0);
+    const overdueDebts = debts.filter(d => d.dueDate && new Date(d.dueDate) < now);
+
+    // Compact bills summary
+    const totalBills = bills.reduce((s, b) => s + b.amount, 0);
+    const unpaidBills = bills.filter(b => {
+      if (!b.lastPaidAt) return true;
+      const lastPaid = new Date(b.lastPaidAt);
+      return lastPaid.getMonth() < now.getMonth() || lastPaid.getFullYear() < now.getFullYear();
     });
 
-    const budgetStatus = budgets.map(b => {
-      const spent = byCategory[b.category] ?? 0;
-      return `${b.category}: Rp${spent.toLocaleString('id-ID')} / Rp${b.amount.toLocaleString('id-ID')} (${Math.round((spent / b.amount) * 100)}%)`;
-    }).join('\n');
+    let ctx = `📊 Bulan ini: +Rp${Number(monthIncome).toLocaleString('id-ID')} / -Rp${Number(monthExpense).toLocaleString('id-ID')} (saldo: Rp${(Number(monthIncome) - Number(monthExpense)).toLocaleString('id-ID')})`;
 
-    const treeStatus = trees.map(t =>
-      `${t.name}: ${Math.round((t.currentAmount / t.targetAmount) * 100)}% (Rp${t.currentAmount.toLocaleString('id-ID')} / Rp${t.targetAmount.toLocaleString('id-ID')})`
-    ).join('\n');
+    if (budgetLines) ctx += `\n📋 Budget: ${budgetLines}`;
+    if (txLines) ctx += `\n📝 TX terakhir: ${txLines}`;
 
-    const txSummary = recentTx.map(t =>
-      `${t.type === 'income' ? '+' : '-'} Rp${t.amount.toLocaleString('id-ID')} (${t.category}: ${t.label}) - ${t.date.toLocaleDateString('id-ID')}`
-    ).join('\n');
+    if (trees.length > 0) {
+      ctx += `\n🌳 Tabungan: ${trees.map(t => `${t.name} ${Math.round((t.currentAmount / t.targetAmount) * 100)}%`).join(', ')}`;
+    }
 
-    const prompt = `Kamu adalah "Si Bawel", asisten keuangan virtual yang nyinyir tapi baik hati.
-Level kecerewetan: ${setting.level}
-- SANTAI: santai, supportive, jarang ceramah
-- NORMAL: balanced, kasih saran praktis
-- CEREWET: super nyinyir, selalu ada komentar pedas tapi penuh sayang, detail banget
+    if (totalDebtOwed > 0 || totalDebtLent > 0) {
+      ctx += `\n💸 Hutang: aku utang Rp${totalDebtOwed.toLocaleString('id-ID')}`;
+      if (totalDebtLent > 0) ctx += `, dihutangin Rp${totalDebtLent.toLocaleString('id-ID')}`;
+      if (overdueDebts.length > 0) ctx += ` (${overdueDebts.length} jatuh tempo!)`;
+    }
 
-📊 Kondisi Keuangan Bulan Ini:
-- Total pemasukan: Rp${monthIncome.toLocaleString('id-ID')}
-- Total pengeluaran: Rp${monthExpense.toLocaleString('id-ID')}
-- Saldo bulan ini: Rp${(monthIncome - monthExpense).toLocaleString('id-ID')}
+    if (bills.length > 0) {
+      ctx += `\n🔔 Tagihan rutin: ${bills.length} item, total Rp${totalBills.toLocaleString('id-ID')}/bln`;
+      if (unpaidBills.length > 0) ctx += ` (${unpaidBills.length} belum dibayar bulan ini)`;
+    }
 
-${budgetStatus ? `📋 Status Budget:\n${budgetStatus}` : 'Budget belum diatur.'}
+    if (wishlist.length > 0) {
+      ctx += `\n🎯 Wishlist: ${wishlist.map(w => `${w.name}(Rp${w.estimatedPrice.toLocaleString('id-ID')})`).join(', ')}`;
+    }
 
-${treeStatus ? `🌳 Pohon Tabungan:\n${treeStatus}` : 'Belum ada pohon tabungan.'}
+    return ctx;
+  }
 
-📝 Transaksi Terbaru:
-${txSummary || 'Belum ada transaksi.'}
+  /**
+   * Get personality prompt fragment based on evolution stage
+   */
+  private getPersonalityPrompt(setting: any): string {
+    const stage = (setting.personalityStage || 'NEWBIE') as keyof typeof PERSONALITY_STAGES;
+    const stageInfo = PERSONALITY_STAGES[stage] || PERSONALITY_STAGES.NEWBIE;
 
-User bertanya: "${message}"
+    let base = `Kamu "Si Bawel", asisten keuangan virtual yang nyinyir tapi baik hati.
+Level kecerewetan: ${setting.level} (SANTAI=supportive, NORMAL=balanced, CEREWET=super nyinyir tapi sayang)
+Stage hubungan: ${stage} — ${stageInfo.trait}`;
 
-Jawab dalam bahasa Indonesia, casual, sesuai level kecerewetan.
-Jika user tanya tentang keuangan, berikan saran praktis berdasarkan data di atas.
-Selalu sebut angka nyata jika relevan.
-Max 4-5 kalimat.`;
+    // Add memory context if available (compressed facts)
+    if (setting.memory) {
+      try {
+        const memoryData = JSON.parse(setting.memory);
+        if (memoryData.facts && memoryData.facts.length > 0) {
+          base += `\n🧠 Yang kamu ingat tentang user: ${memoryData.facts.slice(-8).join('; ')}`;
+        }
+      } catch { /* ignore corrupt memory */ }
+    }
+
+    // Add financial DNA if available
+    if (setting.financialDna) {
+      base += `\n🧬 Profil keuangan user: ${setting.financialDna}`;
+    }
+
+    return base;
+  }
+
+  /**
+   * Extract key facts from conversation and update memory (post-response, non-blocking)
+   */
+  private async updateMemory(userId: string, userMessage: string, aiReply: string, setting: any): Promise<void> {
+    try {
+      // Increment interaction count & determine stage evolution
+      const newCount = (setting.interactionCount || 0) + 1;
+      let newStage = setting.personalityStage || 'NEWBIE';
+
+      if (newCount >= 75) newStage = 'BESTIE';
+      else if (newCount >= 30) newStage = 'SAHABAT';
+      else if (newCount >= 10) newStage = 'KENAL';
+
+      // Extract a fact from conversation (only every 3rd interaction to save tokens)
+      let updatedMemory = setting.memory;
+      if (newCount % 3 === 0 && userMessage.length > 15) {
+        updatedMemory = await this.extractMemoryFact(userMessage, setting.memory);
+      }
+
+      await this.prisma.bawelSetting.upsert({
+        where: { userId },
+        update: {
+          interactionCount: newCount,
+          personalityStage: newStage,
+          lastInteraction: new Date(),
+          ...(updatedMemory !== setting.memory ? { memory: updatedMemory } : {}),
+        },
+        create: {
+          userId,
+          level: 'NORMAL',
+          isEnabled: true,
+          interactionCount: newCount,
+          personalityStage: newStage,
+          lastInteraction: new Date(),
+          memory: updatedMemory,
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`updateMemory failed: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Extract a key fact from user message and append to memory (max 12 facts, then compress)
+   */
+  private async extractMemoryFact(userMessage: string, currentMemory: string | null): Promise<string> {
+    let facts: string[] = [];
+    try {
+      if (currentMemory) {
+        const parsed = JSON.parse(currentMemory);
+        facts = parsed.facts || [];
+      }
+    } catch { /* start fresh */ }
+
+    // Simple heuristic extraction (no AI call needed — saves tokens!)
+    const msg = userMessage.toLowerCase();
+    let newFact: string | null = null;
+
+    // Detect patterns in user messages
+    if (msg.includes('gaji') || msg.includes('salary')) newFact = `Pernah bahas soal gaji/income`;
+    else if (msg.includes('kuliah') || msg.includes('semester')) newFact = `Mahasiswa aktif`;
+    else if (msg.includes('kos') || msg.includes('ngekos')) newFact = `Anak kos`;
+    else if (msg.includes('nabung') || msg.includes('saving')) newFact = `Lagi berusaha nabung`;
+    else if (msg.includes('hemat') || msg.includes('irit')) newFact = `Berusaha hemat`;
+    else if (msg.includes('boros') || msg.includes('impulsif')) newFact = `Sadar sering boros`;
+    else if (msg.includes('utang') || msg.includes('hutang')) newFact = `Ada concern soal hutang`;
+    else if (msg.includes('investasi') || msg.includes('invest')) newFact = `Tertarik investasi`;
+    else if (msg.includes('makan') || msg.includes('jajan')) newFact = `Sering bahas pengeluaran makan/jajan`;
+    else if (msg.includes('target') || msg.includes('goal')) newFact = `Punya financial goals`;
+
+    if (newFact && !facts.includes(newFact)) {
+      facts.push(newFact);
+    }
+
+    // Keep max 12 facts (compress oldest if overflow)
+    if (facts.length > 12) {
+      facts = facts.slice(-12);
+    }
+
+    return JSON.stringify({ facts, updatedAt: new Date().toISOString() });
+  }
+
+  async chat(userId: string, message: string) {
+    const setting = await this.getSetting(userId);
+
+    // Build compact financial context
+    const financialCtx = await this.buildFinancialContext(userId);
+    const personalityPrompt = this.getPersonalityPrompt(setting);
+
+    const prompt = `${personalityPrompt}
+
+${financialCtx}
+
+User: "${message}"
+
+Jawab bahasa Indonesia casual sesuai level & stage. Sebut angka nyata jika relevan. Max 4-5 kalimat.`;
 
     const reply = await this.ai.generateText(prompt).catch(() =>
       'Aduh, aku lagi nge-lag nih. Coba tanya lagi nanti ya~ 😅',
     );
-    return { reply };
+
+    // Update memory in background (non-blocking)
+    this.updateMemory(userId, message, reply, setting).catch(() => {});
+
+    return { reply, stage: setting.personalityStage || 'NEWBIE' };
   }
 
   async generateWeeklyRoast(userId: string) {
@@ -150,7 +321,7 @@ Max 4-5 kalimat.`;
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
       const weekWhere = { userId, date: { gte: oneWeekAgo } };
-      const [typeSums, categorySums, txCount, setting, recentTx] = await Promise.all([
+      const [typeSums, categorySums, txCount, setting, recentTx, debts, bills] = await Promise.all([
         this.prisma.transaction.groupBy({
           by: ['type'],
           where: weekWhere,
@@ -167,7 +338,16 @@ Max 4-5 kalimat.`;
           where: { ...weekWhere, type: 'expense' },
           select: { label: true, amount: true, category: true, date: true },
           orderBy: { amount: 'desc' },
-          take: 15,
+          take: 12, // Reduced from 15
+        }),
+        // NEW: Include debt context in weekly roast
+        this.prisma.debt.findMany({
+          where: { userId, isPaid: false },
+          select: { amount: true, debtType: true, dueDate: true },
+        }),
+        this.prisma.recurringBill.findMany({
+          where: { userId, isActive: true },
+          select: { name: true, amount: true, lastPaidAt: true },
         }),
       ]);
 
@@ -190,64 +370,60 @@ Max 4-5 kalimat.`;
         };
       }
 
-      // List individual transactions for AI to analyze
+      // Compact transaction list
       const txList = recentTx.map(t =>
-        `- Rp${t.amount.toLocaleString('id-ID')} | ${t.category} | "${t.label}" | ${t.date.toLocaleDateString('id-ID')}`
+        `- Rp${t.amount.toLocaleString('id-ID')}|${t.category}|"${t.label}"`
       ).join('\n');
 
-      const prompt = `Kamu adalah "Si Bawel", financial advisor untuk anak muda Indonesia yang nyinyir tapi peduli.
-Level kecerewetan: ${setting.level}
+      // Debt/bill context for roast
+      const totalDebtOwed = debts.filter(d => d.debtType === 'owed_by_me').reduce((s, d) => s + d.amount, 0);
+      const now = new Date();
+      const unpaidBills = bills.filter(b => {
+        if (!b.lastPaidAt) return true;
+        const lastPaid = new Date(b.lastPaidAt);
+        return lastPaid.getMonth() < now.getMonth() || lastPaid.getFullYear() < now.getFullYear();
+      });
+
+      const personalityPrompt = this.getPersonalityPrompt(setting);
+
+      let extraContext = '';
+      if (totalDebtOwed > 0) extraContext += `\n⚠️ Total hutang belum lunas: Rp${totalDebtOwed.toLocaleString('id-ID')}`;
+      if (unpaidBills.length > 0) extraContext += `\n⚠️ ${unpaidBills.length} tagihan belum dibayar bulan ini`;
+
+      const prompt = `${personalityPrompt}
 
 DATA KEUANGAN MINGGU INI:
-- Total pemasukan: Rp${Number(income).toLocaleString('id-ID')}
-- Total pengeluaran: Rp${Number(expense).toLocaleString('id-ID')}
+- Pemasukan: Rp${Number(income).toLocaleString('id-ID')}
+- Pengeluaran: Rp${Number(expense).toLocaleString('id-ID')}
 - Saldo: Rp${Number(Number(income) - Number(expense)).toLocaleString('id-ID')}
-- Breakdown per kategori: ${JSON.stringify(byCategory)}
-- Jumlah transaksi: ${txCount}
+- Kategori: ${JSON.stringify(byCategory)}
+- Jumlah TX: ${txCount}${extraContext}
 
-DETAIL TRANSAKSI PENGELUARAN:
+DETAIL PENGELUARAN:
 ${txList}
 
-TUGASMU:
-1. Beri skor 1-10 untuk pengelolaan keuangan minggu ini
-2. Roast/komentarin pengeluarannya dengan nyinyir tapi lucu
-3. Identifikasi 2-4 transaksi yang SEBENERNYA GAK PERLU (impulsive, bisa ditahan, dll). Jelaskan kenapa
-4. Kasih 3 nasehat keuangan yang relate sama anak muda jaman sekarang (misal soal FOMO spending, boba trap, laundry vs cuci sendiri, masak vs beli, dll)
-5. Satu tips actionable untuk minggu depan
-6. Highlight pengeluaran terbesar
+TUGAS: Beri skor 1-10, roast nyinyir, identifikasi 2-4 pengeluaran tidak perlu, 3 nasehat relate anak muda, 1 tips minggu depan.
 
-Format response (JSON):
-{
-  "score": number,
-  "roast": "komentar nyinyir 2-3 kalimat tentang pengeluaran minggu ini",
-  "biggestSpend": "nama kategori",
-  "tip": "tips singkat untuk minggu depan",
-  "unnecessarySpending": [
-    { "item": "nama transaksi", "amount": number, "reason": "kenapa ini sebenernya gak perlu" }
-  ],
-  "advice": [
-    "nasehat 1 yang relate sama anak muda",
-    "nasehat 2",
-    "nasehat 3"
-  ],
-  "savingPotential": number
-}
+Format JSON:
+{"score":N,"roast":"2-3 kalimat","biggestSpend":"kategori","tip":"tips singkat","unnecessarySpending":[{"item":"nama","amount":N,"reason":"kenapa"}],"advice":["1","2","3"],"savingPotential":N}
 
-PENTING:
-- savingPotential = total dari semua unnecessarySpending.amount
-- Bahasa casual, gaul, relatable buat anak kuliahan
-- Jangan terlalu galak, tetep supportif
-- Kalau pengeluarannya wajar semua, tetep kasih saran untuk improve`;
+Bahasa casual, gaul, tetep supportif.`;
 
       try {
         const result = await this.ai.generateText(prompt);
         const parsed = JSON.parse(result.replace(/```json?\n?/g, '').replace(/```/g, '').trim());
-        // Ensure arrays exist
         if (!Array.isArray(parsed.unnecessarySpending)) parsed.unnecessarySpending = [];
         if (!Array.isArray(parsed.advice)) parsed.advice = [];
         if (typeof parsed.savingPotential !== 'number') {
           parsed.savingPotential = parsed.unnecessarySpending.reduce((s: number, item: any) => s + (item.amount || 0), 0);
         }
+
+        // Update memory with roast interaction
+        this.updateMemory(userId, '[weekly roast generated]', parsed.roast || '', setting).catch(() => {});
+
+        // Update financial DNA weekly (compact profile)
+        this.updateFinancialDna(userId, byCategory, Number(income), Number(expense), totalDebtOwed).catch(() => {});
+
         return parsed;
       } catch {
         const topCategory = Object.entries(byCategory).sort((a, b) => b[1] - a[1])[0];
@@ -262,7 +438,6 @@ PENTING:
         };
       }
     } catch (error: any) {
-      // If DB queries fail (missing table, etc.), return a safe fallback
       this.logger.warn(`runWeeklyRoastLogic failed: ${error?.message}`);
       return {
         score: 5,
@@ -270,6 +445,37 @@ PENTING:
         tip: 'Mulai catat pengeluaran harianmu biar bisa di-roast minggu depan.',
         biggestSpend: '-',
       };
+    }
+  }
+
+  /**
+   * Update financial DNA — a compact text profile of user's financial behavior.
+   * Called after weekly roast to keep it fresh without extra AI calls.
+   */
+  private async updateFinancialDna(
+    userId: string,
+    categories: Record<string, number>,
+    income: number,
+    expense: number,
+    totalDebt: number,
+  ): Promise<void> {
+    try {
+      const topCategories = Object.entries(categories)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([cat, amt]) => `${cat}(${Math.round((amt / (expense || 1)) * 100)}%)`)
+        .join(', ');
+
+      const ratio = expense > 0 && income > 0 ? Math.round((expense / income) * 100) : 0;
+      const dna = `Rasio pengeluaran ${ratio}% income. Top spending: ${topCategories}. ${totalDebt > 0 ? `Hutang aktif Rp${totalDebt.toLocaleString('id-ID')}.` : 'Bebas hutang.'} ${ratio > 90 ? 'Cenderung boros.' : ratio < 50 ? 'Cukup hemat.' : 'Moderat.'}`;
+
+      await this.prisma.bawelSetting.upsert({
+        where: { userId },
+        update: { financialDna: dna },
+        create: { userId, level: 'NORMAL', isEnabled: true, financialDna: dna },
+      });
+    } catch (err: any) {
+      this.logger.warn(`updateFinancialDna failed: ${err?.message}`);
     }
   }
 }

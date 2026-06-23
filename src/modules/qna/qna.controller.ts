@@ -72,6 +72,16 @@ export class QnaController {
   }
 
   /**
+   * GET /qna/questions/similar — Find similar questions (duplicate detection)
+   * Must be defined BEFORE :slug to avoid route conflict.
+   */
+  @Get('questions/similar')
+  @UseGuards(OptionalAuthGuard)
+  findSimilarQuestions(@Query('title') title: string) {
+    return this.svc.findSimilarQuestions(title || '');
+  }
+
+  /**
    * GET /qna/questions/:slug — Get question by slug with related questions (max 5)
    */
   @Get('questions/:slug')
@@ -170,5 +180,59 @@ export class QnaController {
   @UseGuards(AuthGuard)
   getReputation(@GetUser() user: User) {
     return this.svc.getReputation(user.id);
+  }
+
+  // ─── Bookmarks ─────────────────────────────────────────────────
+
+  @Post('questions/:id/bookmark')
+  @UseGuards(AuthGuard)
+  bookmarkQuestion(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.bookmarkQuestion(user.id, id);
+  }
+
+  @Delete('questions/:id/bookmark')
+  @UseGuards(AuthGuard)
+  removeBookmark(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.removeBookmark(user.id, id);
+  }
+
+  @Get('bookmarks')
+  @UseGuards(AuthGuard)
+  getBookmarks(@GetUser() user: User) {
+    return this.svc.getBookmarks(user.id);
+  }
+
+  // ─── Question Votes ────────────────────────────────────────────
+
+  @Post('questions/:id/vote')
+  @UseGuards(AuthGuard)
+  upvoteQuestion(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.upvoteQuestion(user.id, id);
+  }
+
+  @Delete('questions/:id/vote')
+  @UseGuards(AuthGuard)
+  removeQuestionVote(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.removeQuestionVote(user.id, id);
+  }
+
+  // ─── Edit Answer ───────────────────────────────────────────────
+
+  @Patch('answers/:id')
+  @UseGuards(AuthGuard)
+  editAnswer(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateAnswerDto,
+  ) {
+    return this.svc.editAnswer(user.id, id, dto.body);
+  }
+
+  // ─── Weekly Leaderboard ────────────────────────────────────────
+
+  @Get('leaderboard/weekly')
+  @UseGuards(OptionalAuthGuard)
+  getWeeklyLeaderboard(@Query('limit') limit?: string) {
+    return this.svc.getWeeklyLeaderboard(limit ? parseInt(limit) : 10);
   }
 }

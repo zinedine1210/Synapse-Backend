@@ -43,16 +43,17 @@ export class FoodRecommendService {
   async getRemainingFoodBudget(userId: string) {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const FOOD_CATEGORIES = ['Makanan', 'Food', 'Makan', 'makanan', 'food'];
     const [foodBudgets, foodTx] = await Promise.all([
       this.prisma.categoryBudget.findMany({
-        where: { userId, category: 'Makanan', month: now.getMonth() + 1, year: now.getFullYear() },
+        where: { userId, category: { in: FOOD_CATEGORIES }, month: now.getMonth() + 1, year: now.getFullYear() },
       }),
       this.prisma.transaction.aggregate({
-        where: { userId, type: 'expense', category: 'Makanan', date: { gte: monthStart } },
+        where: { userId, type: 'expense', category: { in: FOOD_CATEGORIES }, date: { gte: monthStart } },
         _sum: { amount: true },
       }),
     ]);
-    const budget = foodBudgets[0]?.amount ?? 0;
+    const budget = foodBudgets.reduce((sum, b) => sum + b.amount, 0);
     const spent = foodTx._sum.amount ?? 0;
     const remaining = budget > 0 ? budget - spent : null;
     return { budget, spent, remaining };
@@ -68,16 +69,17 @@ export class FoodRecommendService {
     // Get remaining food budget
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const FOOD_CATEGORIES = ['Makanan', 'Food', 'Makan', 'makanan', 'food'];
     const [foodBudgets, foodTx] = await Promise.all([
       this.prisma.categoryBudget.findMany({
-        where: { userId, category: 'Makanan', month: now.getMonth() + 1, year: now.getFullYear() },
+        where: { userId, category: { in: FOOD_CATEGORIES }, month: now.getMonth() + 1, year: now.getFullYear() },
       }),
       this.prisma.transaction.aggregate({
-        where: { userId, type: 'expense', category: 'Makanan', date: { gte: monthStart } },
+        where: { userId, type: 'expense', category: { in: FOOD_CATEGORIES }, date: { gte: monthStart } },
         _sum: { amount: true },
       }),
     ]);
-    const foodBudget = foodBudgets[0]?.amount ?? 0;
+    const foodBudget = foodBudgets.reduce((sum, b) => sum + b.amount, 0);
     const foodSpent = foodTx._sum.amount ?? 0;
     const remaining = foodBudget > 0 ? foodBudget - foodSpent : null;
 
@@ -103,6 +105,10 @@ Response dalam JSON:
       "cookTime": "15 menit",
       "difficulty": "Mudah",
       "estimatedCost": 15000,
+      "calories": 350,
+      "protein": 15,
+      "carbs": 45,
+      "fat": 10,
       "ingredients": ["bahan1 - jumlah", "bahan2 - jumlah"],
       "steps": ["Langkah 1", "Langkah 2"],
       "tags": ["hemat", "cepat"]
@@ -164,9 +170,10 @@ Response dalam JSON:
     const prompt = `Lihat foto menu ini. Pilih 3-5 menu TERBAIK sesuai filter "${filter || 'hemat'}".
 
 User: pedas ${pref.spicyLevel}/3, diet ${pref.dietType}${pref.avgMealBudget ? `, budget Rp${pref.avgMealBudget.toLocaleString('id-ID')}` : ''}
+Bahan tidak disukai: ${pref.dislikedIngredients.join(', ') || 'tidak ada'}
 
 JSON response:
-{ "recommendations": [{ "name": "...", "price": number, "reason": "alasan singkat", "tags": ["hemat"] }] }`;
+{ "recommendations": [{ "name": "...", "price": number, "reason": "alasan singkat", "calories": number, "tags": ["hemat"] }] }`;
 
     let result: string;
     try {
@@ -264,6 +271,202 @@ JSON response:
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: limit,
+    });
+  }
+
+  // === Text-based ingredient mode ===
+
+  async recommendFromText(userId: string, ingredients: string[]) {
+    return this.aiJob.runAsync(userId, 'food_from_text', async () => {
+      const pref = await this.getPreference(userId);
+      const budgetInfo = await this.getRemainingFoodBudget(userId);
+      const remaining = budgetInfo.remaining;
+
+      const prompt = `Kamu adalah asisten masak untuk anak muda Indonesia.
+
+User punya bahan-bahan berikut: ${ingredients.join(', ')}
+
+Berikan 3 resep sederhana yang bisa dibuat dari bahan tersebut (boleh tambah bumbu dasar).
+
+Preferensi user:
+- Bahan tidak disukai: ${pref.dislikedIngredients.join(', ') || 'tidak ada'}
+- Masakan favorit: ${pref.preferredCuisines.join(', ') || 'semua'}
+- Level pedas: ${pref.spicyLevel}/3
+- Diet: ${pref.dietType}
+${remaining !== null ? `- Sisa budget makan bulan ini: Rp ${remaining.toLocaleString('id-ID')}` : ''}
+${pref.avgMealBudget ? `- Budget per makan: Rp ${pref.avgMealBudget.toLocaleString('id-ID')}` : ''}
+
+Response dalam JSON:
+{
+  "detectedIngredients": [${ingredients.map(i => `"${i}"`).join(', ')}],
+  "recipes": [
+    {
+      "name": "Nama Resep",
+      "cookTime": "15 menit",
+      "difficulty": "Mudah",
+      "estimatedCost": 15000,
+      "calories": 350,
+      "protein": 15,
+      "carbs": 45,
+      "fat": 10,
+      "ingredients": ["bahan1 - jumlah", "bahan2 - jumlah"],
+      "steps": ["Langkah 1", "Langkah 2"],
+      "tags": ["hemat", "cepat"]
+    }
+  ]
+}`;
+
+      let result: string;
+      try {
+        result = await this.ai.generateText(prompt, { responseMimeType: 'application/json' });
+      } catch {
+        return { detectedIngredients: ingredients, recipes: [], error: 'AI tidak tersedia saat ini' };
+      }
+
+      let parsed: any;
+      try {
+        const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        parsed = JSON.parse(cleaned);
+      } catch {
+        return { detectedIngredients: ingredients, recipes: [], rawResponse: result };
+      }
+
+      // Save history
+      try {
+        if (parsed.recipes?.length) {
+          await Promise.all(
+            parsed.recipes.map((recipe: any) =>
+              this.prisma.foodRecommendationHistory.create({
+                data: {
+                  userId,
+                  recipeName: recipe.name,
+                  recipeData: JSON.stringify(recipe),
+                  sourceType: 'text',
+                  budget: remaining,
+                },
+              }),
+            ),
+          );
+        }
+      } catch (e) {
+        this.logger.warn('Failed to save text history', e);
+      }
+
+      return parsed;
+    });
+  }
+
+  // === Rating ===
+
+  async rateRecipe(userId: string, historyId: string, rating: number, feedback?: string) {
+    const history = await this.prisma.foodRecommendationHistory.findFirst({
+      where: { id: historyId, userId },
+    });
+    if (!history) throw new NotFoundException('Riwayat tidak ditemukan');
+
+    return this.prisma.foodRating.upsert({
+      where: { userId_historyId: { userId, historyId } },
+      update: { rating, feedback },
+      create: { userId, historyId, rating, feedback },
+    });
+  }
+
+  async getMyRatings(userId: string) {
+    return this.prisma.foodRating.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // === Weekly Meal Plan ===
+
+  async generateMealPlan(userId: string, days = 7) {
+    return this.aiJob.runAsync(userId, 'food_meal_plan', async () => {
+      const pref = await this.getPreference(userId);
+      const budgetInfo = await this.getRemainingFoodBudget(userId);
+      const remaining = budgetInfo.remaining;
+      const dailyBudget = pref.avgMealBudget || (remaining ? Math.round(remaining / days) : 25000);
+
+      const prompt = `Kamu adalah perencana meal plan untuk anak muda Indonesia (mahasiswa/anak kos).
+
+Buatkan meal plan ${days} hari (makan siang & makan malam). Setiap hari ada 2 meal.
+
+Preferensi:
+- Budget per hari: Rp ${dailyBudget.toLocaleString('id-ID')}
+- Bahan tidak disukai: ${pref.dislikedIngredients.join(', ') || 'tidak ada'}
+- Masakan favorit: ${pref.preferredCuisines.join(', ') || 'semua'}
+- Level pedas: ${pref.spicyLevel}/3
+- Diet: ${pref.dietType}
+${remaining !== null ? `- Total sisa budget: Rp ${remaining.toLocaleString('id-ID')}` : ''}
+
+PENTING: Variasikan menu (jangan ulang), perhatikan nutrisi seimbang, dan sesuaikan budget.
+
+JSON response:
+{
+  "dailyBudget": ${dailyBudget},
+  "totalEstimatedCost": number,
+  "days": [
+    {
+      "day": 1,
+      "meals": [
+        {
+          "type": "lunch",
+          "name": "Nama Makanan",
+          "estimatedCost": 12000,
+          "calories": 400,
+          "protein": 20,
+          "carbs": 50,
+          "fat": 12,
+          "tags": ["homecook"],
+          "note": "Tips singkat"
+        },
+        {
+          "type": "dinner",
+          "name": "Nama Makanan",
+          "estimatedCost": 15000,
+          "calories": 450,
+          "protein": 25,
+          "carbs": 40,
+          "fat": 15,
+          "tags": ["beli"],
+          "note": "Tips singkat"
+        }
+      ]
+    }
+  ]
+}`;
+
+      let result: string;
+      try {
+        result = await this.ai.generateText(prompt, { responseMimeType: 'application/json' });
+      } catch {
+        return { days: [], error: 'AI tidak tersedia saat ini' };
+      }
+
+      let parsed: any;
+      try {
+        const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        parsed = JSON.parse(cleaned);
+      } catch {
+        return { days: [], rawResponse: result };
+      }
+
+      // Save to history
+      try {
+        await this.prisma.foodRecommendationHistory.create({
+          data: {
+            userId,
+            recipeName: `Meal Plan ${days} Hari`,
+            recipeData: JSON.stringify(parsed),
+            sourceType: 'meal_plan',
+            budget: remaining,
+          },
+        });
+      } catch (e) {
+        this.logger.warn('Failed to save meal plan history', e);
+      }
+
+      return parsed;
     });
   }
 }

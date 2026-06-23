@@ -89,10 +89,13 @@ model User {
   settings               UserSettings?
   qnaVotes               QnaVote[]
   qnaReports             QnaReport[]
+  qnaBookmarks           QnaBookmark[]
+  qnaQuestionVotes       QnaQuestionVote[]
   subscriptionDismissals SubscriptionDismissal[]
   weeklyProgress         WeeklyChallengeProgress[]
   foodFavorites          FoodFavorite[]
   foodHistory            FoodRecommendationHistory[]
+  foodRatings            FoodRating[]
   profile                UserProfile?
   recurringBills         RecurringBill[]
   debts                  Debt[]
@@ -665,9 +668,15 @@ model TreeTransaction {
 }
 
 model BawelSetting {
-  userId    String  @id
-  level     String  @default("NORMAL")
-  isEnabled Boolean @default(true)
+  userId          String   @id
+  level           String   @default("NORMAL")
+  isEnabled       Boolean  @default(true)
+  // Si Bawel Memory & Evolution
+  memory          String?  @db.Text // Compressed personality memory (JSON: key facts about user)
+  personalityStage String  @default("NEWBIE") // NEWBIE -> KENAL -> SAHABAT -> BESTIE
+  interactionCount Int     @default(0)
+  lastInteraction  DateTime?
+  financialDna     String?  @db.Text // Compact financial profile summary (updated weekly)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -722,11 +731,15 @@ model QnaQuestion {
   status    String   @default("open")
   isPublic  Boolean  @default(true)
   viewCount Int      @default(0)
+  upvotes   Int      @default(0)
+  aiAnswer  String?  @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  answers QnaAnswer[]
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers   QnaAnswer[]
+  bookmarks QnaBookmark[]
+  qVotes    QnaQuestionVote[]
 
   @@index([userId])
   @@index([slug])
@@ -1039,6 +1052,41 @@ model QnaReport {
 }
 
 // ==============================
+// Q&A Bookmarks
+// ==============================
+
+model QnaBookmark {
+  id         String   @id @default(uuid())
+  userId     String
+  questionId String
+  createdAt  DateTime @default(now())
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question QnaQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId])
+}
+
+// ==============================
+// Q&A Question Votes
+// ==============================
+
+model QnaQuestionVote {
+  id         String   @id @default(uuid())
+  userId     String
+  questionId String
+  value      Int      @default(1) // +1 upvote, -1 downvote
+  createdAt  DateTime @default(now())
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question QnaQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([questionId])
+}
+
+// ==============================
 // Weekly Challenge (Gamification)
 // ==============================
 
@@ -1095,13 +1143,29 @@ model FoodRecommendationHistory {
   userId     String
   recipeName String
   recipeData String?
-  sourceType String?  // 'fridge' or 'menu'
+  sourceType String?  // 'fridge', 'menu', 'text', 'meal_plan'
   budget     Float?
   createdAt  DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ratings FoodRating[]
 
   @@index([userId, createdAt])
+}
+
+model FoodRating {
+  id        String   @id @default(uuid())
+  userId    String
+  historyId String
+  rating    Int      // 1-5
+  feedback  String?
+  createdAt DateTime @default(now())
+
+  user    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  history FoodRecommendationHistory @relation(fields: [historyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, historyId])
+  @@index([userId])
 }
 
 // ==============================

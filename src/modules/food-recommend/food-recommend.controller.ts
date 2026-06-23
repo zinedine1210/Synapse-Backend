@@ -65,4 +65,27 @@ export class FoodRecommendController {
   getHistory(@GetUser() user: User, @Query('limit') limit?: string) {
     return this.svc.getHistory(user.id, limit ? parseInt(limit, 10) : 20);
   }
+
+  // === Text-based ingredient mode ===
+  @Post('from-text')
+  fromText(@GetUser() user: User, @Body() body: { ingredients: string[] }) {
+    return this.svc.recommendFromText(user.id, body.ingredients);
+  }
+
+  // === Rating ===
+  @Post('rate')
+  rateRecipe(@GetUser() user: User, @Body() body: { historyId: string; rating: number; feedback?: string }) {
+    return this.svc.rateRecipe(user.id, body.historyId, body.rating, body.feedback);
+  }
+
+  @Get('ratings')
+  getMyRatings(@GetUser() user: User) {
+    return this.svc.getMyRatings(user.id);
+  }
+
+  // === Weekly Meal Plan ===
+  @Post('meal-plan')
+  generateMealPlan(@GetUser() user: User, @Body() body: { days?: number }) {
+    return this.svc.generateMealPlan(user.id, body.days || 7);
+  }
 }

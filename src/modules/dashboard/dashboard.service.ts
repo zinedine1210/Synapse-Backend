@@ -513,6 +513,19 @@ export class DashboardService {
         orderBy: { updatedAt: 'desc' },
         take: 3,
       }),
+      // 9: Active debts (unpaid)
+      this.prisma.debt.findMany({
+        where: { userId: user.id, isPaid: false },
+        select: { description: true, amount: true, debtType: true, personName: true, dueDate: true },
+        take: 5,
+      }),
+      // 10: Active recurring bills
+      this.prisma.recurringBill.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { name: true, amount: true, dueDay: true, lastPaidAt: true },
+      }),
+      // 11: Bawel setting (for personality stage in briefing)
+      this.prisma.bawelSetting.findUnique({ where: { userId: user.id } }),
     ]);
 
     const classMemberships = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -524,6 +537,9 @@ export class DashboardService {
     const pendingTodos = results[6].status === 'fulfilled' ? results[6].value : [];
     const gamification = results[7].status === 'fulfilled' ? results[7].value : null;
     const trees = results[8].status === 'fulfilled' ? results[8].value : [];
+    const debts = results[9].status === 'fulfilled' ? (results[9] as any).value : [];
+    const bills = results[10].status === 'fulfilled' ? (results[10] as any).value : [];
+    const bawelSetting = results[11].status === 'fulfilled' ? (results[11] as any).value : null;
 
     // ---- Today's schedule ----
     const schedule = classMemberships
@@ -668,9 +684,35 @@ export class DashboardService {
         ? savingTrees.map((t) => `${t.name}: ${t.progress}% (${rp(t.currentAmount)}/${rp(t.targetAmount)})`).join('; ')
         : 'Tidak ada target tabungan aktif';
 
+    // Debt & bill context (compact)
+    const totalDebtOwed = debts.filter((d: any) => d.debtType === 'owed_by_me').reduce((s: number, d: any) => s + d.amount, 0);
+    const totalDebtLent = debts.filter((d: any) => d.debtType === 'owed_to_me').reduce((s: number, d: any) => s + d.amount, 0);
+    const overdueDebts = debts.filter((d: any) => d.dueDate && new Date(d.dueDate) < now);
+    const totalBillsMonthly = bills.reduce((s: number, b: any) => s + b.amount, 0);
+    const unpaidBills = bills.filter((b: any) => {
+      if (!b.lastPaidAt) return true;
+      const lastPaid = new Date(b.lastPaidAt);
+      return lastPaid.getMonth() < now.getMonth() || lastPaid.getFullYear() < now.getFullYear();
+    });
+
+    let debtBillText = '';
+    if (totalDebtOwed > 0) debtBillText += `Hutang aktif: ${rp(totalDebtOwed)}`;
+    if (totalDebtLent > 0) debtBillText += `${debtBillText ? '; ' : ''}Piutang: ${rp(totalDebtLent)}`;
+    if (overdueDebts.length > 0) debtBillText += ` (${overdueDebts.length} jatuh tempo!)`;
+    if (bills.length > 0) debtBillText += `${debtBillText ? '; ' : ''}Tagihan rutin: ${bills.length} item (${rp(totalBillsMonthly)}/bln)`;
+    if (unpaidBills.length > 0) debtBillText += `, ${unpaidBills.length} belum dibayar`;
+    if (!debtBillText) debtBillText = 'Tidak ada hutang/tagihan aktif';
+
+    // Si Bawel personality stage for briefing tone
+    const personalityStage = bawelSetting?.personalityStage || 'NEWBIE';
+    const stageHint = personalityStage === 'BESTIE' ? 'Kamu udah kayak bestie user — be extra personal & insightful.'
+      : personalityStage === 'SAHABAT' ? 'Kamu udah cukup kenal user — boleh lebih personal.'
+      : personalityStage === 'KENAL' ? 'Kamu mulai kenal user — sesuaikan gaya.' : '';
+
     const prompt = `
 Kamu adalah "Si Bawel", asisten pribadi yang ramah, cerdas, dan sedikit cerewet (witty) untuk seorang anak muda Indonesia bernama ${user.fullName}.
 Tugasmu membuat "Briefing Hari Ini" yang personal: rangkum hal-hal penting, beri saran yang actionable, kritik halus kalau perlu (misalnya kalau boros atau banyak tugas telat), dan ingatkan hal penting. Gaya bahasa santai khas anak kuliahan, hangat, tidak menggurui.
+${stageHint}
 
 KONTEKS HARI INI (${todayDayName}, waktu ${timeOfDay}):
 - Jadwal kuliah: ${scheduleText}
@@ -682,6 +724,7 @@ KONTEKS HARI INI (${todayDayName}, waktu ${timeOfDay}):
 - Pengeluaran kemarin: ${rp(yesterdayExpense)}
 - Pengeluaran bulan ini: ${rp(monthExpense)} (pemasukan ${rp(monthIncome)})
 - Status budget bulan ini: ${budgetText}
+- Hutang & Tagihan: ${debtBillText}
 - Target tabungan: ${treeText}
 - Gamifikasi: streak ${streak} hari, level ${level}, total XP ${totalXp}
 

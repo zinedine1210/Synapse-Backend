@@ -3,18 +3,23 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { GamificationService } from '../gamification/gamification.service';
 import { NotificationService } from '../notification/notification.service';
+import { AiService } from '../ai/ai.service';
 import { CreateQuestionDto, CreateAnswerDto, UpdateQuestionDto } from './dto/qna.dto';
 
 @Injectable()
 export class QnaService {
+  private readonly logger = new Logger(QnaService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly gamificationService: GamificationService,
     private readonly notificationService: NotificationService,
+    private readonly aiService: AiService,
   ) {}
 
   private generateSlug(title: string): string {
@@ -57,7 +62,32 @@ export class QnaService {
     // Award XP: +5 for asking a question
     await this.gamificationService.awardXp(userId, 'qna_question', `Bertanya: ${dto.title}`);
 
+    // Generate AI answer asynchronously (fire-and-forget)
+    this.generateAiAnswer(question.id, dto.title, dto.body).catch(err =>
+      this.logger.warn(`AI answer generation failed for ${question.id}: ${err.message}`),
+    );
+
     return question;
+  }
+
+  /**
+   * Generate AI answer for a question using Gemini.
+   */
+  private async generateAiAnswer(questionId: string, title: string, body?: string) {
+    const prompt = `Kamu adalah asisten akademik yang membantu mahasiswa. Jawab pertanyaan berikut dengan jelas, ringkas, dan informatif dalam Bahasa Indonesia. Gunakan format markdown jika perlu (bold, list, code block).
+
+Pertanyaan: ${title}
+${body ? `Detail: ${body}` : ''}
+
+Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban terbaik berdasarkan interpretasi yang paling masuk akal.`;
+
+    const aiAnswer = await this.aiService.generateText(prompt);
+    if (aiAnswer && aiAnswer.trim()) {
+      await this.prisma.qnaQuestion.update({
+        where: { id: questionId },
+        data: { aiAnswer },
+      });
+    }
   }
 
   async getQuestions(query: {
@@ -558,6 +588,186 @@ export class QnaService {
       include: {
         user: { select: { id: true, fullName: true, avatarUrl: true } },
       },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // BOOKMARKS
+  // ═══════════════════════════════════════════════════════════════
+
+  async bookmarkQuestion(userId: string, questionId: string) {
+    const question = await this.prisma.qnaQuestion.findUnique({ where: { id: questionId } });
+    if (!question) throw new NotFoundException('Pertanyaan tidak ditemukan.');
+
+    const existing = await this.prisma.qnaBookmark.findUnique({
+      where: { userId_questionId: { userId, questionId } },
+    });
+    if (existing) throw new ConflictException('Sudah di-bookmark.');
+
+    return this.prisma.qnaBookmark.create({ data: { userId, questionId } });
+  }
+
+  async removeBookmark(userId: string, questionId: string) {
+    const existing = await this.prisma.qnaBookmark.findUnique({
+      where: { userId_questionId: { userId, questionId } },
+    });
+    if (!existing) throw new NotFoundException('Bookmark tidak ditemukan.');
+
+    return this.prisma.qnaBookmark.delete({
+      where: { userId_questionId: { userId, questionId } },
+    });
+  }
+
+  async getBookmarks(userId: string) {
+    const bookmarks = await this.prisma.qnaBookmark.findMany({
+      where: { userId },
+      include: {
+        question: {
+          include: {
+            user: { select: { id: true, fullName: true, avatarUrl: true } },
+            _count: { select: { answers: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return bookmarks.map(b => b.question);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // QUESTION VOTES
+  // ═══════════════════════════════════════════════════════════════
+
+  async upvoteQuestion(userId: string, questionId: string) {
+    const question = await this.prisma.qnaQuestion.findUnique({ where: { id: questionId } });
+    if (!question) throw new NotFoundException('Pertanyaan tidak ditemukan.');
+    if (question.userId === userId) throw new ForbiddenException('Tidak bisa upvote pertanyaan sendiri.');
+
+    const existing = await this.prisma.qnaQuestionVote.findUnique({
+      where: { userId_questionId: { userId, questionId } },
+    });
+    if (existing) throw new ConflictException('Anda sudah pernah vote pertanyaan ini.');
+
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.qnaQuestionVote.create({ data: { userId, questionId, value: 1 } }),
+      this.prisma.qnaQuestion.update({
+        where: { id: questionId },
+        data: { upvotes: { increment: 1 } },
+      }),
+    ]);
+    return updated;
+  }
+
+  async removeQuestionVote(userId: string, questionId: string) {
+    const existing = await this.prisma.qnaQuestionVote.findUnique({
+      where: { userId_questionId: { userId, questionId } },
+    });
+    if (!existing) throw new NotFoundException('Anda belum vote pertanyaan ini.');
+
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.qnaQuestionVote.delete({
+        where: { userId_questionId: { userId, questionId } },
+      }),
+      this.prisma.qnaQuestion.update({
+        where: { id: questionId },
+        data: { upvotes: { decrement: 1 } },
+      }),
+    ]);
+    return updated;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // EDIT ANSWER
+  // ═══════════════════════════════════════════════════════════════
+
+  async editAnswer(userId: string, answerId: string, body: string) {
+    const answer = await this.prisma.qnaAnswer.findUnique({ where: { id: answerId } });
+    if (!answer) throw new NotFoundException('Jawaban tidak ditemukan.');
+    if (answer.userId !== userId) throw new ForbiddenException('Hanya pemilik jawaban yang bisa mengedit.');
+
+    return this.prisma.qnaAnswer.update({
+      where: { id: answerId },
+      data: { body },
+      include: { user: { select: { id: true, fullName: true, avatarUrl: true } } },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // DUPLICATE DETECTION
+  // ═══════════════════════════════════════════════════════════════
+
+  async findSimilarQuestions(title: string, limit = 5) {
+    // Simple text-based similarity: search by title keywords
+    const keywords = title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 2)
+      .slice(0, 5);
+
+    if (keywords.length === 0) return [];
+
+    const orConditions = keywords.map(kw => ({
+      title: { contains: kw, mode: 'insensitive' as const },
+    }));
+
+    return this.prisma.qnaQuestion.findMany({
+      where: {
+        isPublic: true,
+        OR: orConditions,
+      },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        status: true,
+        _count: { select: { answers: true } },
+      },
+      orderBy: { viewCount: 'desc' },
+      take: limit,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // WEEKLY LEADERBOARD
+  // ═══════════════════════════════════════════════════════════════
+
+  async getWeeklyLeaderboard(limit = 10) {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    // Count answers given per user in the last 7 days
+    const leaderboard = await this.prisma.qnaAnswer.groupBy({
+      by: ['userId'],
+      where: { createdAt: { gte: oneWeekAgo } },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: limit,
+    });
+
+    if (leaderboard.length === 0) return [];
+
+    const userIds = leaderboard.map(l => l.userId);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, fullName: true, avatarUrl: true },
+    });
+
+    // Count approved answers in the same period
+    const approvedCounts = await this.prisma.qnaAnswer.groupBy({
+      by: ['userId'],
+      where: { createdAt: { gte: oneWeekAgo }, isApprovedByAsker: true, userId: { in: userIds } },
+      _count: { id: true },
+    });
+    const approvedMap = new Map(approvedCounts.map(a => [a.userId, a._count.id]));
+
+    return leaderboard.map(entry => {
+      const user = users.find(u => u.id === entry.userId);
+      return {
+        user: user || { id: entry.userId, fullName: 'Unknown', avatarUrl: null },
+        answersCount: entry._count.id,
+        approvedCount: approvedMap.get(entry.userId) || 0,
+      };
     });
   }
 }
