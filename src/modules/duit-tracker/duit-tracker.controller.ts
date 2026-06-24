@@ -145,26 +145,31 @@ export class DuitTrackerController {
   // ── Debt/Hutang ──
 
   @Get('debts')
+  @RequireFeature('duit_tracker_debts')
   getDebts(@GetUser() user: User, @Query('isPaid') isPaid?: string) {
     return this.svc.getDebts(user.id, isPaid !== undefined ? isPaid === 'true' : undefined);
   }
 
   @Post('debts')
+  @RequireFeature('duit_tracker_debts')
   createDebt(@GetUser() user: User, @Body() dto: { description: string; amount: number; debtType: string; personName: string; dueDate?: string }) {
     return this.svc.createDebt(user.id, dto);
   }
 
   @Patch('debts/:id')
+  @RequireFeature('duit_tracker_debts')
   updateDebt(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { description?: string; amount?: number; debtType?: string; personName?: string; dueDate?: string }) {
     return this.svc.updateDebt(user.id, id, dto);
   }
 
   @Delete('debts/:id')
+  @RequireFeature('duit_tracker_debts')
   deleteDebt(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.deleteDebt(user.id, id);
   }
 
   @Post('debts/:id/pay')
+  @RequireFeature('duit_tracker_debts')
   markDebtPaid(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.markDebtPaid(user.id, id);
   }
@@ -172,26 +177,31 @@ export class DuitTrackerController {
   // ── Recurring Bills / Tagihan ──
 
   @Get('bills')
+  @RequireFeature('duit_tracker_bills')
   getBills(@GetUser() user: User) {
     return this.svc.getBills(user.id);
   }
 
   @Post('bills')
+  @RequireFeature('duit_tracker_bills')
   createBill(@GetUser() user: User, @Body() dto: { name: string; amount: number; dueDay: number; category?: string; notes?: string }) {
     return this.svc.createBill(user.id, dto);
   }
 
   @Patch('bills/:id')
+  @RequireFeature('duit_tracker_bills')
   updateBill(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { name?: string; amount?: number; dueDay?: number; isActive?: boolean; notes?: string }) {
     return this.svc.updateBill(user.id, id, dto);
   }
 
   @Delete('bills/:id')
+  @RequireFeature('duit_tracker_bills')
   deleteBill(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.deleteBill(user.id, id);
   }
 
   @Post('bills/:id/pay')
+  @RequireFeature('duit_tracker_bills')
   markBillPaid(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.markBillPaid(user.id, id);
   }
@@ -204,26 +214,31 @@ export class DuitTrackerController {
   // ── Wishlist / Rencana Belanja ──
 
   @Get('wishlist')
+  @RequireFeature('duit_tracker_wishlist')
   getWishlist(@GetUser() user: User) {
     return this.svc.getWishlist(user.id);
   }
 
   @Post('wishlist')
+  @RequireFeature('duit_tracker_wishlist')
   createWishlistItem(@GetUser() user: User, @Body() dto: { name: string; estimatedPrice: number; priority?: string; category?: string; targetDate?: string; notes?: string; url?: string }) {
     return this.svc.createWishlistItem(user.id, dto);
   }
 
   @Patch('wishlist/:id')
+  @RequireFeature('duit_tracker_wishlist')
   updateWishlistItem(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: { name?: string; estimatedPrice?: number; priority?: string; category?: string; targetDate?: string; notes?: string; url?: string }) {
     return this.svc.updateWishlistItem(user.id, id, dto);
   }
 
   @Delete('wishlist/:id')
+  @RequireFeature('duit_tracker_wishlist')
   deleteWishlistItem(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.deleteWishlistItem(user.id, id);
   }
 
   @Post('wishlist/:id/purchase')
+  @RequireFeature('duit_tracker_wishlist')
   markWishlistPurchased(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto?: { linkedTransactionId?: string }) {
     return this.svc.markWishlistPurchased(user.id, id, dto?.linkedTransactionId);
   }
@@ -231,21 +246,25 @@ export class DuitTrackerController {
   // ── Budget Challenge & Streak ──
 
   @Get('challenges')
+  @RequireFeature('duit_tracker_challenges')
   getChallenges(@GetUser() user: User) {
     return this.svc.getChallenges(user.id);
   }
 
   @Post('challenges')
+  @RequireFeature('duit_tracker_challenges')
   createChallenge(@GetUser() user: User, @Body() dto: { title: string; description?: string; type: string; targetAmount?: number; targetDays?: number; category?: string }) {
     return this.svc.createChallenge(user.id, dto);
   }
 
   @Post('challenges/:id/progress')
+  @RequireFeature('duit_tracker_challenges')
   updateChallengeProgress(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.updateChallengeProgress(user.id, id);
   }
 
   @Delete('challenges/:id')
+  @RequireFeature('duit_tracker_challenges')
   deleteChallenge(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.deleteChallenge(user.id, id);
   }

@@ -6,12 +6,25 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
-    // Append connection_limit to DATABASE_URL if not already present (keeps Prisma pool within Supabase limits)
+    // Optimize connection URL for pgbouncer + Supabase
     let dbUrl = process.env.DATABASE_URL || '';
-    if (dbUrl && !dbUrl.includes('connection_limit')) {
-      const separator = dbUrl.includes('?') ? '&' : '?';
-      dbUrl = `${dbUrl}${separator}connection_limit=5`;
+    const params = new URLSearchParams();
+
+    // Parse existing params
+    const [baseUrl, existingParams] = dbUrl.split('?');
+    if (existingParams) {
+      new URLSearchParams(existingParams).forEach((v, k) => params.set(k, v));
     }
+
+    // Ensure optimal connection settings
+    if (!params.has('connection_limit')) params.set('connection_limit', '10');
+    if (!params.has('pool_timeout')) params.set('pool_timeout', '10');
+    // pgbouncer mode: disable prepared statements (required for transaction pooling)
+    if (params.has('pgbouncer') && !params.has('statement_cache_size')) {
+      params.set('statement_cache_size', '0');
+    }
+
+    dbUrl = `${baseUrl}?${params.toString()}`;
 
     super({
       log: process.env.APP_ENV === 'development' ? ['warn', 'error'] : ['error'],

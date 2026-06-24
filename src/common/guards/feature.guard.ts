@@ -12,9 +12,10 @@ export class FeatureGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredFeature = this.reflector.get<string>(
+    // Check handler (method) first, then fall back to class-level decorator
+    const requiredFeature = this.reflector.getAllAndOverride<string>(
       FEATURE_KEY,
-      context.getHandler(),
+      [context.getHandler(), context.getClass()],
     );
 
     if (!requiredFeature) {

@@ -84,7 +84,7 @@ export class NotificationSchedulerService {
             member.userId,
             '⚠️ Deadline Hari Ini!',
             `Tugas "${task.title}" deadline hari ini${task.deadline ? ` jam ${new Date(task.deadline).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}` : ''}!`,
-            { category: 'kelas' },
+            { category: 'kelas', actionUrl: `/class/${task.classId}?tab=tugas` },
           );
         }
       }
@@ -112,7 +112,7 @@ export class NotificationSchedulerService {
             member.userId,
             '📅 Deadline Besok',
             `Tugas "${task.title}" deadline besok. Udah mulai?`,
-            { category: 'kelas' },
+            { category: 'kelas', actionUrl: `/class/${task.classId}?tab=tugas` },
           );
         }
       }
@@ -142,7 +142,7 @@ export class NotificationSchedulerService {
           userId,
           '⏰ Todo Terlambat',
           `${count} todo sudah lewat deadline. Mau reschedule?`,
-          { category: 'todo' },
+          { category: 'todo', actionUrl: '/todos' },
         );
       }
 
@@ -208,7 +208,7 @@ export class NotificationSchedulerService {
             user.id,
             '🤨 3 hari gak catat',
             '3 hari gak catat pengeluaran. Gak mungkin gak keluar duit kan?',
-            { category: 'keuangan' },
+            { category: 'keuangan', actionUrl: '/duit-tracker' },
           );
         }
       }
@@ -722,7 +722,7 @@ export class NotificationSchedulerService {
             member.userId,
             '📅 Deadline 3 Hari Lagi',
             `Tugas "${task.title}" deadline dalam 3 hari. Jangan ditunda ya!`,
-            { category: 'kelas' },
+            { category: 'kelas', actionUrl: `/class/${task.classId}?tab=tugas` },
           );
         }
       }
@@ -811,13 +811,10 @@ export class NotificationSchedulerService {
 
   /**
    * Every 15 minutes — Deliver queued notifications after quiet hours end.
-   * Checks all users who have quiet hours configured and delivers
-   * any pending notifications once their quiet window has passed.
    */
   @Cron('*/15 * * * *')
   async deliverAfterQuietHours() {
     try {
-      // Find users with quiet hours configured
       const usersWithQuietHours = await this.prisma.notificationPreference.findMany({
         where: {
           quietHoursStart: { not: null },
@@ -831,6 +828,242 @@ export class NotificationSchedulerService {
       }
     } catch (error) {
       this.logger.error('Failed to deliver queued notifications', error);
+    }
+  }
+
+  /**
+   * Every day at 08:00 — Recurring bill due date reminders
+   * Checks which bills have dueDay = today and haven't been paid this month.
+   */
+  @Cron('0 8 * * *')
+  async sendBillDueReminders() {
+    this.logger.log('Running bill due reminders...');
+    try {
+      const now = new Date();
+      const todayDay = now.getDate();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      // Bills due today or tomorrow
+      const targetDays = [todayDay, todayDay + 1];
+      const bills = await this.prisma.recurringBill.findMany({
+        where: {
+          isActive: true,
+          dueDay: { in: targetDays },
+        },
+        select: { userId: true, name: true, amount: true, dueDay: true, lastPaidAt: true },
+      });
+
+      for (const bill of bills) {
+        // Skip if already paid this month
+        if (bill.lastPaidAt && new Date(bill.lastPaidAt) >= monthStart) continue;
+
+        const isToday = bill.dueDay === todayDay;
+        const emoji = isToday ? '⚠️' : '📅';
+        const timeLabel = isToday ? 'hari ini' : 'besok';
+
+        await this.notificationService.createNotification(
+          bill.userId,
+          `${emoji} Tagihan ${bill.name} jatuh tempo ${timeLabel}!`,
+          `Tagihan "${bill.name}" Rp${bill.amount.toLocaleString('id-ID')} jatuh tempo ${timeLabel} (tgl ${bill.dueDay}). Jangan sampai telat bayar!`,
+          { category: 'keuangan', actionUrl: '/duit-tracker?tab=bills' },
+        );
+      }
+
+      this.logger.log(`Bill due reminders sent: ${bills.length} bills`);
+    } catch (error) {
+      this.logger.error('Failed to send bill due reminders', error);
+    }
+  }
+
+  /**
+   * Every day at 15:00 — Budget over-limit alert
+   * Checks if any category budget is at 80%+ and warns the user.
+   */
+  @Cron('0 15 * * *')
+  async sendBudgetOverLimitAlert() {
+    this.logger.log('Running budget over-limit alerts...');
+    try {
+      const now = new Date();
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
+      const monthStart = new Date(year, now.getMonth(), 1);
+      const today = new Date(year, now.getMonth(), now.getDate());
+
+      const budgets = await this.prisma.categoryBudget.findMany({
+        where: { month, year },
+        select: { userId: true, category: true, amount: true },
+      });
+
+      for (const budget of budgets) {
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId: budget.userId },
+        });
+        if (pref && !pref.budgetAlert) continue;
+
+        const spent = await this.prisma.transaction.aggregate({
+          where: {
+            userId: budget.userId,
+            type: 'expense',
+            category: budget.category,
+            date: { gte: monthStart },
+          },
+          _sum: { amount: true },
+        });
+
+        const spentAmount = spent._sum.amount || 0;
+        const pct = Math.round((spentAmount / budget.amount) * 100);
+
+        if (pct >= 100) {
+          // Check we haven't sent this today
+          const alreadySent = await this.prisma.notification.findFirst({
+            where: {
+              userId: budget.userId,
+              AND: [
+                { title: { contains: budget.category } },
+                { title: { contains: 'Over Budget' } },
+              ],
+              createdAt: { gte: today },
+            },
+          });
+          if (alreadySent) continue;
+
+          await this.notificationService.createNotification(
+            budget.userId,
+            `🚨 Over Budget: ${budget.category}!`,
+            `Pengeluaran ${budget.category} sudah Rp${spentAmount.toLocaleString('id-ID')} (${pct}%) dari budget Rp${budget.amount.toLocaleString('id-ID')}. Hati-hati!`,
+            { category: 'keuangan', actionUrl: '/duit-tracker?tab=budget' },
+          );
+        } else if (pct >= 80) {
+          const alreadySent = await this.prisma.notification.findFirst({
+            where: {
+              userId: budget.userId,
+              AND: [
+                { title: { contains: budget.category } },
+                { title: { contains: 'Hampir' } },
+              ],
+              createdAt: { gte: today },
+            },
+          });
+          if (alreadySent) continue;
+
+          await this.notificationService.createNotification(
+            budget.userId,
+            `⚡ Hampir Over: ${budget.category}`,
+            `Budget ${budget.category} sudah ${pct}% terpakai (Rp${spentAmount.toLocaleString('id-ID')} / Rp${budget.amount.toLocaleString('id-ID')}). Kurangi atau tambahin budget!`,
+            { category: 'keuangan', actionUrl: '/duit-tracker?tab=budget' },
+          );
+        }
+      }
+
+      this.logger.log('Budget over-limit alerts sent.');
+    } catch (error) {
+      this.logger.error('Failed to send budget alerts', error);
+    }
+  }
+
+  /**
+   * Every day at 16:00 — Wishlist affordability check
+   * Notifies if total savings now cover a wishlist item's price.
+   */
+  @Cron('0 16 * * *')
+  async sendWishlistAffordabilityAlert() {
+    this.logger.log('Running wishlist affordability checks...');
+    try {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      const wishlistItems = await this.prisma.wishlistItem.findMany({
+        where: { isPurchased: false },
+        select: { id: true, userId: true, name: true, estimatedPrice: true },
+      });
+
+      for (const item of wishlistItems) {
+        // Check user's current month balance
+        const [income, expense] = await Promise.all([
+          this.prisma.transaction.aggregate({
+            where: { userId: item.userId, type: 'income', date: { gte: monthStart } },
+            _sum: { amount: true },
+          }),
+          this.prisma.transaction.aggregate({
+            where: { userId: item.userId, type: 'expense', date: { gte: monthStart } },
+            _sum: { amount: true },
+          }),
+        ]);
+
+        const balance = (income._sum.amount || 0) - (expense._sum.amount || 0);
+        if (balance >= item.estimatedPrice) {
+          // Check we haven't sent this already
+          const alreadySent = await this.prisma.notification.findFirst({
+            where: {
+              userId: item.userId,
+              message: { contains: item.name },
+              title: { contains: 'Wishlist' },
+              createdAt: { gte: monthStart },
+            },
+          });
+          if (alreadySent) continue;
+
+          await this.notificationService.createNotification(
+            item.userId,
+            `🎉 Wishlist "${item.name}" Terjangkau!`,
+            `Saldo bulan ini (Rp${balance.toLocaleString('id-ID')}) sudah cukup untuk beli "${item.name}" (Rp${item.estimatedPrice.toLocaleString('id-ID')})! Mau beli sekarang?`,
+            { category: 'keuangan', actionUrl: '/duit-tracker?tab=wishlist' },
+          );
+        }
+      }
+
+      this.logger.log('Wishlist affordability checks sent.');
+    } catch (error) {
+      this.logger.error('Failed to send wishlist alerts', error);
+    }
+  }
+
+  /**
+   * Every day at 20:00 — Class schedule reminder for tomorrow
+   */
+  @Cron('0 20 * * *')
+  async sendTomorrowScheduleReminder() {
+    this.logger.log('Running tomorrow schedule reminder...');
+    try {
+      const now = new Date();
+      const tomorrowDayIndex = (now.getDay() + 1) % 7;
+      const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+      const tomorrowDay = dayNames[tomorrowDayIndex];
+
+      const members = await this.prisma.classMember.findMany({
+        where: { status: 'ACTIVE' },
+        include: {
+          class: { select: { name: true, day: true, time: true, room: true } },
+        },
+      });
+
+      // Group by user
+      const scheduleByUser: Record<string, Array<{ name: string; time: string; room: string }>> = {};
+      for (const m of members) {
+        if (m.class.day?.toLowerCase() !== tomorrowDay.toLowerCase()) continue;
+        if (!scheduleByUser[m.userId]) scheduleByUser[m.userId] = [];
+        scheduleByUser[m.userId].push({
+          name: m.class.name,
+          time: m.class.time || '-',
+          room: m.class.room || '-',
+        });
+      }
+
+      for (const [userId, classes] of Object.entries(scheduleByUser)) {
+        if (classes.length === 0) continue;
+
+        const preview = classes.slice(0, 3).map(c => `${c.name} (${c.time})`).join(', ');
+        await this.notificationService.createNotification(
+          userId,
+          `📚 Besok Ada ${classes.length} Kelas`,
+          `Jadwal besok (${tomorrowDay}): ${preview}${classes.length > 3 ? '...' : ''}. Siapkan dari sekarang!`,
+          { category: 'kelas', actionUrl: '/dashboard' },
+        );
+      }
+
+      this.logger.log('Tomorrow schedule reminders sent.');
+    } catch (error) {
+      this.logger.error('Failed to send schedule reminders', error);
     }
   }
 }

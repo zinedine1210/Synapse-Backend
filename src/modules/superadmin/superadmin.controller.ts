@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, UseInterceptors, ParseUUIDPipe, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { SuperadminService } from './superadmin.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
@@ -9,9 +9,11 @@ import { UpdatePlanConfigDto } from './dto/update-plan-config.dto';
 import { CreatePricingPlanDto } from './dto/create-pricing-plan.dto';
 import { UpdatePricingPlanDto } from './dto/update-pricing-plan.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ResponseCacheInterceptor, CacheTTL } from '../../common/interceptors/response-cache.interceptor';
 
 @Controller('superadmin')
 @UseGuards(AuthGuard, RolesGuard)
+@UseInterceptors(ResponseCacheInterceptor)
 @Roles(Role.SUPERADMIN)
 @Throttle({ default: { ttl: 60000, limit: 30 } })
 export class SuperadminController {
@@ -19,12 +21,14 @@ export class SuperadminController {
 
   /** GET /api/v1/superadmin/analytics – Dashboard analitik sistem */
   @Get('analytics')
+  @CacheTTL(60)
   getAnalytics() {
     return this.superadminService.getSystemAnalytics();
   }
 
   /** GET /api/v1/superadmin/users – Daftar seluruh user */
   @Get('users')
+  @CacheTTL(30)
   getAllUsers(@Query('page') page?: string, @Query('limit') limit?: string) {
     return this.superadminService.getAllUsers(Number(page) || 1, Math.min(Number(limit) || 50, 100));
   }
@@ -97,36 +101,42 @@ export class SuperadminController {
 
   /** GET /api/v1/superadmin/forum-stats – Statistik forum */
   @Get('forum-stats')
+  @CacheTTL(60)
   getForumStats() {
     return this.superadminService.getForumStats();
   }
 
   /** GET /api/v1/superadmin/academic-stats – Statistik akademik */
   @Get('academic-stats')
+  @CacheTTL(60)
   getAcademicStats() {
     return this.superadminService.getAcademicStats();
   }
 
   /** GET /api/v1/superadmin/duit-tracker-stats – Statistik duit tracker */
   @Get('duit-tracker-stats')
+  @CacheTTL(60)
   getDuitTrackerStats() {
     return this.superadminService.getDuitTrackerStats();
   }
 
   /** GET /api/v1/superadmin/gamification-stats – Statistik gamifikasi */
   @Get('gamification-stats')
+  @CacheTTL(60)
   getGamificationStats() {
     return this.superadminService.getGamificationStats();
   }
 
   /** GET /api/v1/superadmin/qna-stats – Statistik Q&A */
   @Get('qna-stats')
+  @CacheTTL(60)
   getQnaStats() {
     return this.superadminService.getQnaStats();
   }
 
   /** GET /api/v1/superadmin/system-stats – Statistik sistem */
   @Get('system-stats')
+  @CacheTTL(60)
   getSystemStats() {
     return this.superadminService.getSystemStats();
   }

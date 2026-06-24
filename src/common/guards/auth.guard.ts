@@ -9,14 +9,29 @@ import { ConfigService } from '@nestjs/config';
 import { createClient } from '@supabase/supabase-js';
 import { PrismaService } from '../../database/prisma.service';
 
+interface CachedUser {
+  data: any;
+  expiresAt: number;
+}
+
+interface CachedToken {
+  userId: string;
+  expiresAt: number;
+}
+
+const USER_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /**
  * JWT Auth Guard – memvalidasi token Bearer dari Supabase Auth.
- * Jika token valid, data user (id, email, role, plan) disisipkan ke req.user.
+ * Menggunakan in-memory cache untuk mengurangi round-trip ke DB dan Supabase.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
   private readonly supabase;
+  private readonly userCache = new Map<string, CachedUser>();
+  private readonly tokenCache = new Map<string, CachedToken>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -26,6 +41,9 @@ export class AuthGuard implements CanActivate {
       this.configService.get<string>('SUPABASE_URL')!,
       this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // Cleanup expired cache entries every 5 minutes
+    setInterval(() => this.cleanupCache(), 5 * 60 * 1000);
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -38,36 +56,63 @@ export class AuthGuard implements CanActivate {
 
     const token = authHeader.split(' ')[1];
 
-    // Verifikasi token ke Supabase Auth
-    const { data, error } = await this.supabase.auth.getUser(token);
-
-    if (error || !data.user) {
-      this.logger.warn(`Token tidak valid: ${error?.message}`);
-      throw new UnauthorizedException('Token tidak valid atau sudah kadaluarsa.');
+    // 1. Check token cache first (avoid Supabase round-trip)
+    let userId: string;
+    const cachedToken = this.tokenCache.get(token);
+    if (cachedToken && cachedToken.expiresAt > Date.now()) {
+      userId = cachedToken.userId;
+    } else {
+      // Verify token with Supabase
+      const { data, error } = await this.supabase.auth.getUser(token);
+      if (error || !data.user) {
+        this.tokenCache.delete(token);
+        this.logger.warn(`Token tidak valid: ${error?.message}`);
+        throw new UnauthorizedException('Token tidak valid atau sudah kadaluarsa.');
+      }
+      userId = data.user.id;
+      this.tokenCache.set(token, { userId, expiresAt: Date.now() + TOKEN_CACHE_TTL });
     }
 
-    // Ambil data user dari database lokal (termasuk role & plan)
+    // 2. Check user cache (avoid DB round-trip)
+    const cachedUser = this.userCache.get(userId);
+    if (cachedUser && cachedUser.expiresAt > Date.now()) {
+      request.user = cachedUser.data;
+      return true;
+    }
+
+    // 3. Fetch from DB and cache
     const localUser = await this.prisma.user.findUnique({
-      where: { id: data.user.id },
+      where: { id: userId },
       include: { pricingPlan: true },
     });
 
     if (!localUser) {
-      // Izinkan sinkronisasi user jika route-nya adalah sync-user
       const isSyncRoute = request.url?.includes('/auth/sync-user') || request.path?.includes('/auth/sync-user');
       if (isSyncRoute) {
-        request.user = { id: data.user.id } as any;
+        request.user = { id: userId } as any;
         return true;
       }
-
-      throw new UnauthorizedException(
-        'Akun tidak ditemukan. Silakan registrasi ulang.',
-      );
+      throw new UnauthorizedException('Akun tidak ditemukan. Silakan registrasi ulang.');
     }
 
-    // Sisipkan ke request object agar controller bisa langsung pakai
+    // Cache the user
+    this.userCache.set(userId, { data: localUser, expiresAt: Date.now() + USER_CACHE_TTL });
     request.user = localUser;
-
     return true;
+  }
+
+  /** Invalidate user cache (call after plan/role changes) */
+  invalidateUser(userId: string) {
+    this.userCache.delete(userId);
+  }
+
+  private cleanupCache() {
+    const now = Date.now();
+    for (const [key, val] of this.userCache) {
+      if (val.expiresAt <= now) this.userCache.delete(key);
+    }
+    for (const [key, val] of this.tokenCache) {
+      if (val.expiresAt <= now) this.tokenCache.delete(key);
+    }
   }
 }

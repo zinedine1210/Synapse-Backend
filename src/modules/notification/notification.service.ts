@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationGateway } from './notification.gateway';
+import { WebPushService } from './web-push.service';
 
 interface GetNotificationsOptions {
   page: number;
@@ -15,6 +16,7 @@ export class NotificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationGateway: NotificationGateway,
+    private readonly webPush: WebPushService,
   ) {}
 
   /**
@@ -115,6 +117,16 @@ export class NotificationService {
         where: { userId, isRead: false },
       });
       this.notificationGateway.emitUnreadCount(userId, unreadCount);
+
+      // Also send push notification to all user devices
+      this.webPush.sendPushToUser(userId, {
+        title,
+        body: message,
+        url: options?.actionUrl || '/dashboard',
+        icon: '/icons/icon-192x192.png',
+      }).catch((err) => {
+        this.logger.debug(`Push notification failed for ${userId}: ${err?.message}`);
+      });
     } else {
       this.logger.debug(
         `Notification queued for user ${userId} (quiet hours active): "${title}"`,

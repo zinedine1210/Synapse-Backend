@@ -19,11 +19,13 @@ async function main() {
     // AI & Dokumen (basic)
     'pdf_export',
     // Keuangan (basic)
-    'duit_tracker',
+    'duit_tracker', 'duit_tracker_bills', 'duit_tracker_debts',
     // Produktivitas (basic)
     'todo_list', 'todo_categories', 'qna_public',
     // Gamifikasi & UX (basic)
     'gamification', 'notification', 'quick_action',
+    // Fun & Engagement (basic)
+    'virtual_pet', 'streak_calendar', 'quiz_keuangan',
   ];
 
   const PRO_FEATURES = [
@@ -38,7 +40,8 @@ async function main() {
     'ai_digitalization', 'schedule_parser', 'pdf_export', 'ai_insight', 'daily_briefing', 'ai_briefing_tips',
     // Keuangan (full)
     'duit_tracker', 'duit_tracker_budget', 'duit_tracker_saving_tree', 'duit_tracker_summary', 'duit_tracker_quick_input',
-    'si_bawel', 'split_bill', 'receipt_scanner',
+    'duit_tracker_bills', 'duit_tracker_debts', 'duit_tracker_wishlist', 'duit_tracker_challenges',
+    'si_bawel', 'si_bawel_memory', 'split_bill', 'receipt_scanner',
     // Produktivitas (full)
     'todo_list', 'todo_calendar', 'todo_timeline', 'todo_categories', 'todo_subtasks', 'todo_recurring',
     'qna_public', 'qna_voting', 'qna_ai_answer',
@@ -46,6 +49,8 @@ async function main() {
     // Gamifikasi & UX (full)
     'gamification', 'gamification_streak', 'gamification_leaderboard',
     'notification', 'command_palette', 'quick_action',
+    // Fun & Engagement (full)
+    'virtual_pet', 'streak_calendar', 'what_if_calculator', 'quiz_keuangan', 'profile_card',
     // Profil & Personalisasi
     'profile_ai_context', 'profile_avatar',
     'dashboard_class_comparison', 'dashboard_trending_qna',
