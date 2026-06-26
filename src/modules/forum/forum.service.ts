@@ -771,8 +771,12 @@ export class ForumService {
     const ext = file.originalname.split('.').pop();
     const path = `forum/${classId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
+    // Ensure bucket exists before uploading
+    const bucketName = 'materials';
+    await this.ensureBucketExists(bucketName);
+
     const { error: uploadError } = await this.supabase.storage
-      .from('materials')
+      .from(bucketName)
       .upload(path, file.buffer, { contentType: file.mimetype });
 
     if (uploadError) {
@@ -780,7 +784,7 @@ export class ForumService {
       throw new BadRequestException('Gagal upload file: ' + uploadError.message);
     }
 
-    const { data: urlData } = this.supabase.storage.from('materials').getPublicUrl(path);
+    const { data: urlData } = this.supabase.storage.from(bucketName).getPublicUrl(path);
 
     return {
       fileUrl: urlData.publicUrl,
@@ -788,6 +792,21 @@ export class ForumService {
       fileType: file.mimetype,
       fileSizeBytes: file.size,
     };
+  }
+
+  /** Ensure a storage bucket exists, create it if not */
+  private async ensureBucketExists(bucketName: string) {
+    const { data, error } = await this.supabase.storage.getBucket(bucketName);
+    if (error || !data) {
+      const { error: createError } = await this.supabase.storage.createBucket(bucketName, {
+        public: true,
+        fileSizeLimit: 10 * 1024 * 1024, // 10MB
+      });
+      if (createError && !createError.message?.includes('already exists')) {
+        this.logger.error(`Failed to create bucket '${bucketName}':`, createError);
+        throw new BadRequestException('Storage belum siap. Silakan coba lagi.');
+      }
+    }
   }
 
   // ── UNREAD TRACKING ──

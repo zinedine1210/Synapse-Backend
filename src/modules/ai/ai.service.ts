@@ -33,23 +33,38 @@ export class AiService {
     if (generationConfig) {
       body.generationConfig = generationConfig;
     }
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-goog-api-key': this.apiKey,
-      },
-      body: JSON.stringify(body),
-    });
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      this.logger.error(`Gemini API error ${response.status}: ${errorBody}`);
-      throw new InternalServerErrorException('Gagal memanggil Gemini API.');
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': this.apiKey,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (response.status === 503 || response.status === 429) {
+        const delay = attempt * 2000; // 2s, 4s, 6s
+        this.logger.warn(`Gemini API ${response.status} (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        this.logger.error(`Gemini API error ${response.status}: ${errorBody}`);
+        throw new InternalServerErrorException('Gagal memanggil Gemini API.');
+      }
+
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     }
 
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    throw new InternalServerErrorException('Gemini API tidak tersedia setelah beberapa percobaan. Silakan coba lagi nanti.');
   }
 
   /**

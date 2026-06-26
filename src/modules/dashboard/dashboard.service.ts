@@ -731,24 +731,30 @@ KONTEKS HARI INI (${todayDayName}, waktu ${timeOfDay}):
 INSTRUKSI OUTPUT:
 Balas HANYA dengan JSON valid (TANPA markdown code fence, tanpa teks pembuka/penutup) dengan struktur PERSIS seperti ini:
 {
-  "greeting": "sapaan singkat personal yang menyebut waktu (${timeOfDay}) dan nama",
+  "greeting": "sapaan hangat personal yang menyebut waktu (${timeOfDay}) dan nama, 1-2 kalimat",
   "headline": "satu kalimat ringkas tentang hal terpenting hari ini",
   "sections": [
-    { "icon": "📅", "title": "Jadwal", "items": ["..."] },
-    { "icon": "💰", "title": "Keuangan", "items": ["..."] },
-    { "icon": "✅", "title": "Tugas & Todo", "items": ["..."] },
-    { "icon": "🔥", "title": "Streak", "items": ["..."] }
+    { "icon": "📅", "title": "Jadwal Hari Ini", "items": ["detail kelas/jadwal..."] },
+    { "icon": "✅", "title": "Tugas & Deadline", "items": ["detail tugas spesifik beserta deadline..."] },
+    { "icon": "💰", "title": "Keuangan", "items": ["detail pengeluaran, budget status, tips hemat..."] },
+    { "icon": "🔥", "title": "Gamifikasi & Streak", "items": ["detail streak, level, pencapaian..."] },
+    { "icon": "💡", "title": "Tabungan & Target", "items": ["progress tabungan, hutang, tagihan..."] }
   ],
-  "suggestions": ["saran yang actionable", "..."],
-  "reminders": ["pengingat penting", "..."],
-  "motivation": "satu kalimat menyemangati atau kritik halus"
+  "suggestions": ["3-5 saran yang SANGAT spesifik dan actionable berdasarkan data"],
+  "reminders": ["2-4 pengingat penting yang relevan dengan hari ini"],
+  "motivation": "2-3 kalimat menyemangati ATAU kritik halus yang witty sesuai kondisi user"
 }
 
-ATURAN:
+ATURAN PENTING:
 - "icon" HANYA boleh salah satu dari: "📅", "💰", "✅", "🔥", "💡".
 - Hanya buat section yang relevan (lewati yang datanya kosong).
-- Gunakan Bahasa Indonesia santai. Angka uang format "Rp" dengan pemisah ribuan.
+- Gunakan Bahasa Indonesia santai khas anak kuliahan. Angka uang format "Rp" dengan pemisah ribuan.
 - Jangan mengarang data yang tidak ada di konteks.
+- SETIAP section HARUS punya minimal 2-3 items yang detail dan spesifik (sebutkan nama tugas, jumlah uang, nama kelas, dll).
+- suggestions HARUS 3-5 saran konkret (bukan generik). Contoh: "Kerjain tugas X yang deadline besok dulu sebelum ke kelas Y."
+- reminders HARUS 2-4 pengingat. Contoh: "Jangan lupa bayar tagihan WiFi Rp150.000 yang belum dibayar bulan ini."
+- motivation HARUS 2-3 kalimat, personal dan relate ke kondisi user (misal boros, streak tinggi, banyak tugas).
+- JANGAN terlalu singkat. Briefing harus informatif dan detail agar user merasa terbantu.
 `.trim();
 
     // Default rule-based fallback so the endpoint never throws.
