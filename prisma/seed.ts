@@ -26,6 +26,8 @@ async function main() {
     'gamification', 'notification', 'quick_action',
     // Fun & Engagement (basic)
     'virtual_pet', 'streak_calendar', 'quiz_keuangan',
+    // Skripsi (basic)
+    'skripsweet',
   ];
 
   const PRO_FEATURES = [
@@ -54,6 +56,8 @@ async function main() {
     // Profil & Personalisasi
     'profile_ai_context', 'profile_avatar',
     'dashboard_class_comparison', 'dashboard_trending_qna',
+    // Skripsi (full)
+    'skripsweet', 'skripsweet_ai_chat', 'skripsweet_journal_search', 'skripsweet_bibliography',
   ];
 
   await prisma.pricingPlan.upsert({

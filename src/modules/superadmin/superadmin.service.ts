@@ -111,6 +111,12 @@ export class SuperadminService {
   }
 
   async assignUserPlan(userId: string, planName: string) {
+    // Validate plan exists
+    const plan = await this.prisma.pricingPlan.findUnique({ where: { name: planName } });
+    if (!plan) {
+      throw new NotFoundException(`Plan "${planName}" tidak ditemukan.`);
+    }
+
     return this.prisma.user.update({
       where: { id: userId },
       data: { plan: planName },

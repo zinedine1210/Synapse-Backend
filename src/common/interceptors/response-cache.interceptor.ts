@@ -42,10 +42,21 @@ export class ResponseCacheInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const ttl = this.reflector.get<number>(CACHE_TTL_KEY, context.getHandler());
-    if (!ttl) return next.handle();
-
     const request = context.switchToHttp().getRequest();
-    if (request.method !== 'GET') return next.handle();
+
+    // For mutations (POST/PATCH/PUT/DELETE): invalidate all caches for this user
+    if (request.method !== 'GET') {
+      return next.handle().pipe(
+        tap(() => {
+          const userId = request.user?.id || 'anon';
+          for (const key of this.cache.keys()) {
+            if (key.startsWith(`${userId}:`)) this.cache.delete(key);
+          }
+        }),
+      );
+    }
+
+    if (!ttl) return next.handle();
 
     const userId = request.user?.id || 'anon';
     const cacheKey = `${userId}:${request.url}`;

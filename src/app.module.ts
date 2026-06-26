@@ -31,6 +31,7 @@ import { InsightModule } from './modules/insight/insight.module';
 import { SearchModule } from './modules/search/search.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { AiJobModule } from './modules/ai-job/ai-job.module';
+import { SkripsweetModule } from './modules/skripsweet/skripsweet.module';
 import { validateEnv } from './config/env.validation';
 
 @Module({
@@ -82,6 +83,7 @@ import { validateEnv } from './config/env.validation';
     InsightModule,
     SearchModule,
     ProfileModule,
+    SkripsweetModule,
   ],
   providers: [
     // ─── Global Rate Limit Guard ──────────────────────────────────────────────

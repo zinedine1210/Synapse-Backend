@@ -98,6 +98,10 @@ model User {
   foodRatings            FoodRating[]
   profile                UserProfile?
   recurringBills         RecurringBill[]
+  thesisProjects         ThesisProject[]
+  thesisLikes            ThesisLike[]
+  thesisBookmarks        ThesisBookmark[]
+  thesisComments         ThesisComment[]
   debts                  Debt[]
   wishlistItems          WishlistItem[]
   budgetChallenges       BudgetChallenge[]
@@ -1347,4 +1351,197 @@ model CustomCategory {
 
   @@unique([userId, name, type])
   @@index([userId])
+}
+
+// ==============================
+// Skripsweet — Thesis Assistant
+// ==============================
+
+model ThesisProject {
+  id              String   @id @default(uuid())
+  userId          String
+  title           String
+  university      String?
+  faculty         String?
+  department      String?
+  supervisor      String?  // Dosen pembimbing 1
+  supervisorTwo   String?  // Dosen pembimbing 2
+  status          String   @default("draft") // draft | in_progress | review | revision | completed
+  startDate       DateTime?
+  targetDate      DateTime?
+  abstract        String?  @db.Text
+  notes           String?  @db.Text
+  isPublished     Boolean  @default(false)
+  publishedAt     DateTime?
+  tags            String[] // e.g. ["machine-learning", "nlp", "deep-learning"]
+  viewCount       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formatTemplate  ThesisFormatTemplate?
+  chapters        ThesisChapter[]
+  journals        ThesisJournal[]
+  bimbingans      ThesisBimbingan[]
+  chatMessages    ThesisChatMessage[]
+  bibliographies  ThesisBibliography[]
+  likes           ThesisLike[]
+  bookmarks       ThesisBookmark[]
+  comments        ThesisComment[]
+
+  @@index([userId])
+  @@index([isPublished, updatedAt])
+}
+
+model ThesisFormatTemplate {
+  id              String   @id @default(uuid())
+  thesisId        String   @unique
+  universityName  String?  // Nama kampus (jika mau reuse)
+  formatRules     String   @db.Text // JSON: detailed format rules (margins, fonts, spacing, chapter structure, etc.)
+  chapterTemplate String?  @db.Text // JSON: default chapter structure based on university format
+  citationStyle   String   @default("apa7") // apa7 | ieee | chicago | vancouver | custom
+  customCitation  String?  @db.Text // Custom citation format rules (if citationStyle == 'custom')
+  language        String   @default("id") // id | en
+  rawUploadText   String?  @db.Text // Raw text extracted from uploaded format guide
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+}
+
+model ThesisChapter {
+  id              String   @id @default(uuid())
+  thesisId        String
+  title           String   // e.g., "BAB I - Pendahuluan"
+  chapterNum      Int      // 1, 2, 3, ...
+  status          String   @default("not_started") // not_started | drafting | reviewing | revision | done
+  content         String?  @db.Text // The actual chapter content/draft (HTML from Tiptap)
+  wordCount       Int      @default(0)
+  targetWords     Int?     // Target word count for this chapter
+  targetPages     Int?     // Target page count
+  targetParagraphs Int?    // Target paragraph count
+  paragraphCount  Int      @default(0) // Actual paragraph count
+  pageEstimate    Float    @default(0) // Estimated pages (words/250)
+  notes           String?  @db.Text
+  aiSuggestion    String?  @db.Text // Last AI feedback/suggestion
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+
+  @@index([thesisId])
+  @@unique([thesisId, chapterNum])
+}
+
+model ThesisJournal {
+  id            String   @id @default(uuid())
+  thesisId      String
+  title         String
+  authors       String?
+  journalName   String?  // Name of journal/conference
+  year          Int?
+  doi           String?
+  url           String?
+  abstract      String?  @db.Text
+  relevance     String?  @db.Text // Why is this relevant to the thesis
+  notes         String?  @db.Text
+  isFromSearch  Boolean  @default(false) // Found via Semantic Scholar API
+  bibtex        String?  @db.Text
+  citationKey   String?  // e.g., "Smith2024" for in-text citation
+  addedAt       DateTime @default(now())
+
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+
+  @@index([thesisId])
+}
+
+model ThesisBimbingan {
+  id          String   @id @default(uuid())
+  thesisId    String
+  date        DateTime
+  supervisor  String?  // Which supervisor (1 or 2)
+  topic       String   // What was discussed
+  feedback    String?  @db.Text // Feedback from supervisor
+  actionItems String?  @db.Text // JSON array of action items
+  status      String   @default("pending") // pending | done
+  attachment  String?  // URL to uploaded file
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+
+  @@index([thesisId])
+}
+
+model ThesisChatMessage {
+  id        String   @id @default(uuid())
+  thesisId  String
+  role      String   // "user" | "assistant"
+  content   String   @db.Text
+  context   String?  // Which chapter/section the question is about
+  createdAt DateTime @default(now())
+
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+
+  @@index([thesisId])
+}
+
+model ThesisBibliography {
+  id            String   @id @default(uuid())
+  thesisId      String
+  journalId     String?  // Link to ThesisJournal if applicable
+  rawEntry      String   @db.Text // The formatted bibliography entry
+  citationKey   String   // e.g., "Smith2024"
+  entryType     String   @default("article") // article | book | inproceedings | thesis | website | other
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+
+  @@index([thesisId])
+}
+
+// ==============================
+// Skripsweet — Social Features
+// ==============================
+
+model ThesisLike {
+  id        String   @id @default(uuid())
+  userId    String
+  thesisId  String
+  createdAt DateTime @default(now())
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, thesisId])
+  @@index([thesisId])
+}
+
+model ThesisBookmark {
+  id        String   @id @default(uuid())
+  userId    String
+  thesisId  String
+  createdAt DateTime @default(now())
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, thesisId])
+  @@index([userId])
+}
+
+model ThesisComment {
+  id        String   @id @default(uuid())
+  userId    String
+  thesisId  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thesis ThesisProject @relation(fields: [thesisId], references: [id], onDelete: Cascade)
+
+  @@index([thesisId])
 }
