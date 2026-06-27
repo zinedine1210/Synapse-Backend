@@ -15,9 +15,17 @@ const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'SUPABASE_SERVICE_ROLE_KEY wajib diisi!'),
   SUPABASE_JWT_SECRET: z.string().min(1, 'SUPABASE_JWT_SECRET wajib diisi!'),
 
-  // Gemini AI
+  // Gemini AI (key rotation)
   GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY wajib diisi!'),
-  GEMINI_MODEL: z.string().default('gemini-1.5-flash'),
+  GEMINI_API_KEY_2: z.string().optional(),
+  GEMINI_API_KEY_3: z.string().optional(),
+  GEMINI_API_KEY_4: z.string().optional(),
+  GEMINI_API_KEY_5: z.string().optional(),
+  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+
+  // OpenAI Fallback (optional — used when all Gemini keys hit quota)
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().optional(),
 
   // Midtrans
   MIDTRANS_SERVER_KEY: z.string().min(1, 'MIDTRANS_SERVER_KEY wajib diisi!'),

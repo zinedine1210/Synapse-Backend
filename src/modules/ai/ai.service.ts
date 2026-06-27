@@ -2,21 +2,70 @@ import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 
 /**
- * AiService – Integrasi Google Gemini via REST API.
- * Menyediakan metode untuk merangkum materi, membuat kuis, dan menyelesaikan soal.
+ * AiService – Multi-provider AI with Gemini key rotation + OpenAI fallback.
+ * Tries GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3, etc.
+ * If ALL Gemini keys hit quota limit (429), falls back to OpenAI.
  */
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly apiKey: string;
+  private readonly geminiKeys: string[];
   private readonly modelName: string;
+  private readonly openaiKey: string | null;
+  private readonly openaiModel: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.apiKey = this.configService.get<string>('GEMINI_API_KEY')!;
-    this.modelName = this.configService.get<string>('GEMINI_MODEL') ?? 'gemini-1.5-flash';
+    // Collect all Gemini API keys: GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3, ...
+    this.geminiKeys = [];
+    const primaryKey = this.configService.get<string>('GEMINI_API_KEY');
+    if (primaryKey) this.geminiKeys.push(primaryKey);
+    for (let i = 2; i <= 10; i++) {
+      const key = this.configService.get<string>(`GEMINI_API_KEY_${i}`);
+      if (key) this.geminiKeys.push(key);
+    }
+    this.modelName = this.configService.get<string>('GEMINI_MODEL') ?? 'gemini-2.0-flash';
+
+    // OpenAI fallback
+    this.openaiKey = this.configService.get<string>('OPENAI_API_KEY') || null;
+    this.openaiModel = this.configService.get<string>('OPENAI_MODEL') ?? 'gpt-4o-mini';
+
+    this.logger.log(`AI Service initialized: ${this.geminiKeys.length} Gemini key(s), OpenAI fallback: ${this.openaiKey ? 'enabled' : 'disabled'}`);
   }
 
-  private async callGemini(
+  /**
+   * Core method: tries Gemini keys in order, falls back to OpenAI if all exhausted.
+   */
+  private async callAI(
+    parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>,
+    generationConfig?: Record<string, unknown>,
+  ): Promise<string> {
+    // --- Try each Gemini key ---
+    for (let keyIdx = 0; keyIdx < this.geminiKeys.length; keyIdx++) {
+      const apiKey = this.geminiKeys[keyIdx];
+      try {
+        const result = await this.callGeminiWithKey(apiKey, parts, generationConfig);
+        return result;
+      } catch (error: any) {
+        if (error?.isQuotaError) {
+          this.logger.warn(`Gemini key #${keyIdx + 1} quota exceeded, trying next...`);
+          continue;
+        }
+        // Non-quota error: throw immediately
+        throw error;
+      }
+    }
+
+    // --- All Gemini keys exhausted, try OpenAI fallback ---
+    if (this.openaiKey) {
+      this.logger.warn('All Gemini keys exhausted. Falling back to OpenAI...');
+      return this.callOpenAI(parts, generationConfig);
+    }
+
+    throw new InternalServerErrorException('Semua API key AI telah mencapai batas quota. Silakan coba lagi nanti.');
+  }
+
+  private async callGeminiWithKey(
+    apiKey: string,
     parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>,
     generationConfig?: Record<string, unknown>,
   ): Promise<string> {
@@ -34,24 +83,33 @@ export class AiService {
       body.generationConfig = generationConfig;
     }
 
-    const maxRetries = 3;
+    const maxRetries = 2;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-goog-api-key': this.apiKey,
+          'X-goog-api-key': apiKey,
         },
         body: JSON.stringify(body),
       });
 
-      if (response.status === 503 || response.status === 429) {
-        const delay = attempt * 2000; // 2s, 4s, 6s
-        this.logger.warn(`Gemini API ${response.status} (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+      if (response.status === 429) {
+        // Quota limit — signal to try next key
+        const err: any = new Error('Gemini quota exceeded');
+        err.isQuotaError = true;
+        throw err;
+      }
+
+      if (response.status === 503) {
         if (attempt < maxRetries) {
-          await new Promise(r => setTimeout(r, delay));
+          await new Promise(r => setTimeout(r, 2000));
           continue;
         }
+        // After retries, treat as temporary error
+        const err: any = new Error('Gemini 503 after retries');
+        err.isQuotaError = true; // Fallback to next key/OpenAI
+        throw err;
       }
 
       if (!response.ok) {
@@ -64,7 +122,59 @@ export class AiService {
       return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     }
 
-    throw new InternalServerErrorException('Gemini API tidak tersedia setelah beberapa percobaan. Silakan coba lagi nanti.');
+    throw new InternalServerErrorException('Gemini API tidak tersedia.');
+  }
+
+  /**
+   * OpenAI fallback — converts Gemini-style parts to OpenAI chat format.
+   */
+  private async callOpenAI(
+    parts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }>,
+    generationConfig?: Record<string, unknown>,
+  ): Promise<string> {
+    // Build OpenAI messages from Gemini parts
+    const content: any[] = [];
+    for (const part of parts) {
+      if (part.text) {
+        content.push({ type: 'text', text: part.text });
+      }
+      if (part.inline_data) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:${part.inline_data.mime_type};base64,${part.inline_data.data}` },
+        });
+      }
+    }
+
+    // Use higher token limit for long content (material digitalization)
+    const hasLongContent = content.some((c: any) => c.type === 'text' && c.text?.length > 5000);
+    const body: any = {
+      model: this.openaiModel,
+      messages: [{ role: 'user', content }],
+      max_tokens: hasLongContent ? 16384 : 4096,
+    };
+
+    if (generationConfig?.response_mime_type === 'application/json') {
+      body.response_format = { type: 'json_object' };
+    }
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.openaiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      this.logger.error(`OpenAI API error ${response.status}: ${errorBody}`);
+      throw new InternalServerErrorException('Gagal memanggil OpenAI API.');
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content ?? '';
   }
 
   /**
@@ -77,7 +187,7 @@ export class AiService {
     }
     parts.push({ text: prompt });
     const generationConfig = options?.responseMimeType ? { response_mime_type: options.responseMimeType } : undefined;
-    return this.callGemini(parts, generationConfig);
+    return this.callAI(parts, generationConfig);
   }
 
   /**
@@ -146,8 +256,17 @@ Format yang wajib digunakan:
 - **Konten lengkap**: paragraf penjelasan lengkap, bukan ringkasan
 - **Daftar & poin**: gunakan bullet/numbered list untuk enumerasi
 - **Istilah penting**: cetak tebal (**istilah**) untuk definisi dan konsep kunci
-- **Rumus/formula**: tampilkan persis seperti aslinya
+- **Rumus/formula**: tampilkan menggunakan LaTeX (inline: $rumus$, block: $$rumus$$)
+- **Tabel**: gunakan format Markdown table yang benar (| header | ... |)
 - **Contoh soal**: pertahankan lengkap dengan penyelesaiannya
+- **Kode program**: gunakan fenced code block dengan bahasa yang sesuai (\`\`\`python, \`\`\`java, dll)
+
+ATURAN OUTPUT KRITIS:
+- LANGSUNG tulis konten Markdown. JANGAN bungkus output dalam \`\`\`markdown code block.
+- JANGAN awali dengan \`\`\`markdown dan JANGAN akhiri dengan \`\`\`.
+- Output harus LANGSUNG dimulai dengan heading atau paragraf pertama.
+- Pastikan setiap heading (##, ###) diawali dengan baris kosong di atasnya agar terbaca sebagai heading.
+- Pastikan setiap list item memiliki baris kosong sebelum list pertama.
 
 Teks materi:
 ---
@@ -161,7 +280,9 @@ Hasilkan dalam Bahasa Indonesia. Digitalkan SELURUH konten, jangan disingkat.
     parts[0].text = prompt;
 
     try {
-      const summary = await this.callGemini(parts);
+      let summary = await this.callAI(parts);
+      // Strip markdown code fences that AI sometimes wraps around the output
+      summary = this.stripMarkdownFences(summary);
       this.logger.log('Digitalisasi materi berhasil');
       return summary;
     } catch (error) {
@@ -199,7 +320,7 @@ ${summary.slice(0, 15000)}
     `.trim();
 
     try {
-      const jsonText = await this.callGemini([{ text: prompt }]);
+      const jsonText = await this.callAI([{ text: prompt }]);
       const cleanedJson = this.extractJson(jsonText);
       // Validasi bahwa output adalah JSON yang valid
       JSON.parse(cleanedJson);
@@ -238,7 +359,7 @@ ATURAN:
     `.trim();
 
     try {
-      return await this.callGemini([{ text: prompt }]);
+      return await this.callAI([{ text: prompt }]);
     } catch (error) {
       this.logger.error('Gagal menjawab pertanyaan:', error);
       throw new InternalServerErrorException('Gagal memproses pertanyaan AI. Coba lagi nanti.');
@@ -275,7 +396,7 @@ Jika ada kolom/hari yang kosong atau bukan jadwal kuliah, abaikan.
         }, 
       };
 
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
+      const jsonText = await this.callAI([{ text: prompt }, imagePart]);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
@@ -297,6 +418,23 @@ Jika ada kolom/hari yang kosong atau bukan jadwal kuliah, abaikan.
       return text.substring(firstBrace, lastBrace + 1);
     }
     return text.trim();
+  }
+
+  /**
+   * Strip wrapping ```markdown ``` fences from AI output.
+   * AI sometimes wraps entire markdown output in a code block.
+   */
+  private stripMarkdownFences(text: string): string {
+    let result = text.trim();
+    // Remove opening ```markdown or ```md or ``` at the start
+    if (/^```(?:markdown|md)?\s*\n/.test(result)) {
+      result = result.replace(/^```(?:markdown|md)?\s*\n/, '');
+    }
+    // Remove closing ``` at the end
+    if (/\n```\s*$/.test(result)) {
+      result = result.replace(/\n```\s*$/, '');
+    }
+    return result.trim();
   }
 
   /**
@@ -333,7 +471,7 @@ ${materialsContext.slice(0, 30000)}
     `.trim();
 
     try {
-      const jsonText = await this.callGemini([{ text: prompt }]);
+      const jsonText = await this.callAI([{ text: prompt }]);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
@@ -369,7 +507,7 @@ Kembalikan HANYA array JSON valid (tanpa markdown code block) dengan format beri
     };
 
     try {
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
+      const jsonText = await this.callAI([{ text: prompt }, imagePart]);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
@@ -424,7 +562,7 @@ Kembalikan HANYA array JSON berupa string pertanyaan:
     };
 
     try {
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
+      const jsonText = await this.callAI([{ text: prompt }, imagePart]);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
@@ -459,7 +597,7 @@ Kembalikan HANYA objek JSON valid dengan struktur berikut:
     };
 
     try {
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
+      const jsonText = await this.callAI([{ text: prompt }, imagePart]);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
@@ -495,7 +633,7 @@ Pastikan mengembalikan HANYA array JSON valid dengan struktur objek seperti beri
     };
 
     try {
-      const jsonText = await this.callGemini([{ text: prompt }, imagePart]);
+      const jsonText = await this.callAI([{ text: prompt }, imagePart]);
       const cleanedJson = this.extractJson(jsonText);
       return JSON.parse(cleanedJson);
     } catch (error) {
@@ -522,7 +660,7 @@ Jangan tambahkan komentar pembuka/penutup, kembalikan langsung teks hasil ekstra
     };
 
     try {
-      return await this.callGemini([{ text: prompt }, imagePart]);
+      return await this.callAI([{ text: prompt }, imagePart]);
     } catch (error) {
       this.logger.error('Gagal OCR gambar:', error);
       throw new InternalServerErrorException('Gagal mengekstrak teks dari gambar.');
