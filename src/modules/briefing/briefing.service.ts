@@ -39,14 +39,14 @@ export class BriefingService {
    * Exported logic for testability (Property 7).
    */
   static selectTopExpenses(
-    transactions: { label: string; amount: number; type: string }[],
+    transactions: { label: string; amount: number; type: string; category?: string; note?: string | null }[],
     n: number = 3,
-  ): { label: string; amount: number }[] {
+  ): { label: string; amount: number; category?: string; note?: string | null }[] {
     return transactions
       .filter((t) => t.type === 'expense')
       .sort((a, b) => b.amount - a.amount)
       .slice(0, n)
-      .map((t) => ({ label: t.label, amount: t.amount }));
+      .map((t) => ({ label: t.label, amount: t.amount, category: t.category, note: t.note }));
   }
 
   async generateBriefing(userId: string, date: Date) {
@@ -80,7 +80,7 @@ export class BriefingService {
       // Transactions in last 24 hours for top expenses
       this.prisma.transaction.findMany({
         where: { userId, date: { gte: last24h } },
-        select: { label: true, amount: true, type: true },
+        select: { label: true, amount: true, type: true, category: true, note: true },
         orderBy: { amount: 'desc' },
         take: 50,
       }),
@@ -194,7 +194,7 @@ export class BriefingService {
     // --- 8.3: Top 3 expense transactions from last 24 hours ---
     const topExpenses = BriefingService.selectTopExpenses(recentExpenses, 3);
     const expensesText = topExpenses.length > 0
-      ? topExpenses.map((t) => `- ${t.label}: Rp${t.amount.toLocaleString('id-ID')}`).join('\n')
+      ? topExpenses.map((t: any) => `- ${t.label} (${t.category || '-'}): Rp${t.amount.toLocaleString('id-ID')}${t.note ? ` — "${t.note}"` : ''}`).join('\n')
       : 'Tidak ada pengeluaran 24 jam terakhir.';
 
     // --- 8.4: Today's class sessions (classes scheduled today) ---
@@ -298,7 +298,13 @@ export class BriefingService {
       : '';
 
     // Build AI prompt with structured section markers for frontend parsing
-    const prompt = `Kamu adalah asisten pribadi yang ramah untuk anak muda. Buat briefing harian yang terstruktur dan personal.
+    const prompt = `Kamu adalah asisten pribadi cerdas untuk anak muda. Tugasmu bukan sekedar membacakan data, tapi memberikan INSIGHT dan ANALISIS yang benar-benar membantu user mengambil keputusan hari ini.
+
+PRINSIP:
+- JANGAN hanya membacakan ulang data. User bisa baca sendiri datanya. Tugasmu adalah MENGANALISIS dan memberikan INSIGHT.
+- Hubungkan data satu sama lain: contoh jika pengeluaran makanan tinggi + ada wishlist laptop, beri insight "kalau kurangi jajan Rp50rb/hari, dalam 2 bulan bisa beli laptop yang kamu mau"
+- Gunakan catatan/notes dari transaksi untuk memahami KONTEKS pengeluaran sebelum berkomentar
+- Prioritaskan yang paling URGENT dan IMPACTFUL, bukan sebutkan semua data
 
 Data hari ini (${today.toLocaleDateString('id-ID')}, ${todayDayName}):
 
@@ -332,41 +338,46 @@ INSTRUKSI FORMAT OUTPUT:
 Buat briefing menggunakan section markers berikut agar bisa di-parse oleh frontend. Setiap section HARUS diawali dengan marker yang tepat:
 
 <!-- SECTION:greeting -->
-(Sapa user sesuai waktu: pagi/siang/sore. 1-2 kalimat personal berdasarkan konteks user jika ada.)
+(Sapa user sesuai waktu: pagi/siang/sore. 1-2 kalimat yang PERSONAL dan relevan — bukan sekedar "selamat pagi!" tapi hubungkan dengan konteks hari ini, misal "Pagi! Hari ini ada deadline tugas X, jadi pastiin fokus ya.")
 
 <!-- SECTION:tugas -->
-(Rangkum tugas kelas yang mendekati deadline. Sebutkan JUDUL SPESIFIK dan TANGGAL deadline. Jika tidak ada tugas, skip section ini.)
+(Rangkum tugas kelas yang mendekati deadline. Sebutkan JUDUL SPESIFIK dan TANGGAL. Berikan strategi singkat: mana yang harus dikerjakan duluan dan kenapa. Jika tidak ada tugas, skip section ini.)
 
 <!-- SECTION:todo -->
-(Rangkum to-do personal yang perlu dikerjakan. Sebutkan JUDUL SPESIFIK dan tanggal jatuh tempo. Jika tidak ada, skip section ini.)
+(Rangkum to-do personal yang perlu dikerjakan. Prioritaskan yang paling urgent. Jika ada yang sudah overdue, highlight. Jika tidak ada, skip section ini.)
 
 <!-- SECTION:keuangan -->
-(Analisis keuangan: sebutkan 3 pengeluaran terbesar 24 jam terakhir + total bulan ini + warning jika budget hampir habis. Berikan saran singkat. Jika tidak ada, skip.)
+(ANALISIS, bukan sekedar list. Contoh insight yang bagus:
+- "Pengeluaran makanan Rp800rb minggu ini, 60% budget. Kalau lanjut pace ini, budget habis tanggal 20."
+- "Beli kursus online Rp200rb — investasi bagus! Pastiin diselesaikan biar worth it."
+- "Ngopi 4x minggu ini = Rp120rb. Coba bawa tumbler dari rumah, bisa hemat Rp400rb/bulan."
+Pahami KONTEKS dari catatan transaksi sebelum judge. Jika pengeluaran untuk keluarga/pendidikan/kesehatan, apresiasi. Jika tidak ada data, skip.)
 
 <!-- SECTION:tagihan -->
-(Sebutkan tagihan yang belum dibayar bulan ini, terutama yang sudah lewat/mendekati jatuh tempo. Ingatkan untuk segera bayar. Jika tidak ada, skip.)
+(Sebutkan tagihan yang belum dibayar, terutama yang sudah lewat/mendekati jatuh tempo. Berikan prioritas: mana yang harus dibayar HARI INI. Jika tidak ada, skip.)
 
 <!-- SECTION:hutang -->
-(Rangkum total hutang dan piutang user. Highlight yang mendekati jatuh tempo. Jika tidak ada, skip.)
+(Rangkum total hutang dan piutang. Highlight yang mendekati jatuh tempo. Beri saran spesifik, misal "DM si Andi hari ini buat ingetin utangnya." Jika tidak ada, skip.)
 
 <!-- SECTION:kelas -->
 (Sebutkan jadwal kelas hari ini: nama kelas, judul pertemuan, JAM, dan RUANGAN. Jika tidak ada kelas, skip section ini.)
 
 <!-- SECTION:tabungan -->
-(Sebutkan nama pohon tabungan dan PERSENTASE progress. Kasih semangat singkat. Jika tidak ada tabungan, skip section ini.)
+(Sebutkan nama pohon tabungan dan PERSENTASE progress. Hubungkan dengan keuangan: "kalau sisihkan Rp20rb/hari dari budget jajan, target tercapai dalam X minggu." Jika tidak ada tabungan, skip.)
 
 <!-- SECTION:challenge -->
-(Sebutkan challenge yang aktif, streak saat ini, dan progress. Kasih semangat untuk jaga streak. Jika tidak ada, skip.)
+(Sebutkan challenge aktif, streak saat ini, dan progress. Kasih semangat spesifik untuk jaga streak. Jika tidak ada, skip.)
 
 <!-- SECTION:wishlist -->
-(Sebutkan 1-2 item wishlist teratas. Hubungkan dengan tips keuangan (misal: "kurangi ngopi bisa nabung buat X"). Jika tidak ada, skip.)
+(Hubungkan wishlist dengan strategi keuangan: berapa lama bisa tercapai jika hemat dari kategori tertentu. Beri saran realistis. Jika tidak ada, skip.)
 
 <!-- SECTION:motivasi -->
-(Tutup dengan 1 kalimat motivasi singkat yang relevan dengan streak/level/konteks user.)
+(1 kalimat motivasi yang SPESIFIK dan relevan dengan data user hari ini — bukan quotes generik. Contoh: "Streak 5 hari jaga budget, tinggal 2 hari lagi buat pecah rekor! 🔥")
 
 ATURAN:
-- Gunakan Bahasa Indonesia, casual tapi informatif
-- Sebutkan data SPESIFIK (judul, angka, tanggal) bukan generik
+- Bahasa Indonesia, casual tapi BERISI
+- Berikan INSIGHT dan ANALISIS, bukan sekedar membacakan data
+- Hubungkan antar-data untuk menemukan pola dan saran yang actionable
 - Max 400 kata total
 - JANGAN tambahkan section yang tidak ada datanya
 - Format konten di dalam setiap section sebagai markdown (bold, list, dll)`;

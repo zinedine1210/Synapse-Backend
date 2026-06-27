@@ -75,8 +75,8 @@ async function bootstrap() {
   // ─── Global Prefix ────────────────────────────────────────────────────────
   app.setGlobalPrefix('api/v1');
 
-  const port = process.env.APP_PORT ?? 3001;
-  await app.listen(port);
+  const port = process.env.PORT || process.env.APP_PORT || 3001;
+  await app.listen(port, '0.0.0.0');
 
   console.log(`🧠 Synapse Backend berjalan di: http://localhost:${port}/api/v1`);
 }

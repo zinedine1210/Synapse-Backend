@@ -66,9 +66,9 @@ export class SiBawelService {
     const [recentTx, monthSums, categorySums, budgets, trees, debts, bills, wishlist] = await Promise.all([
       this.prisma.transaction.findMany({
         where: { userId },
-        select: { type: true, amount: true, category: true, label: true, date: true },
+        select: { type: true, amount: true, category: true, label: true, date: true, note: true },
         orderBy: { date: 'desc' },
-        take: 7, // Reduced from 10 for token efficiency
+        take: 7,
       }),
       this.prisma.transaction.groupBy({
         by: ['type'],
@@ -123,9 +123,9 @@ export class SiBawelService {
       return `${b.category}:${pct}%`;
     }).join(', ');
 
-    // Compact transaction list
+    // Transaction list with context
     const txLines = recentTx.map(t =>
-      `${t.type === 'income' ? '+' : '-'}${t.amount}(${t.category})`
+      `${t.type === 'income' ? '+' : '-'}${t.amount}(${t.category}:${t.label}${t.note ? '|' + t.note : ''})`
     ).join('; ');
 
     // Compact debt summary
@@ -336,9 +336,9 @@ Jawab bahasa Indonesia casual sesuai level & stage. Sebut angka nyata jika relev
         this.getSetting(userId),
         this.prisma.transaction.findMany({
           where: { ...weekWhere, type: 'expense' },
-          select: { label: true, amount: true, category: true, date: true },
+          select: { label: true, amount: true, category: true, date: true, note: true },
           orderBy: { amount: 'desc' },
-          take: 12, // Reduced from 15
+          take: 12,
         }),
         // NEW: Include debt context in weekly roast
         this.prisma.debt.findMany({
@@ -370,9 +370,9 @@ Jawab bahasa Indonesia casual sesuai level & stage. Sebut angka nyata jika relev
         };
       }
 
-      // Compact transaction list
+      // Transaction list with context/notes
       const txList = recentTx.map(t =>
-        `- Rp${t.amount.toLocaleString('id-ID')}|${t.category}|"${t.label}"`
+        `- Rp${t.amount.toLocaleString('id-ID')}|${t.category}|"${t.label}"${t.note ? `|catatan: "${t.note}"` : ''}`
       ).join('\n');
 
       // Debt/bill context for roast
@@ -399,15 +399,30 @@ DATA KEUANGAN MINGGU INI:
 - Kategori: ${JSON.stringify(byCategory)}
 - Jumlah TX: ${txCount}${extraContext}
 
-DETAIL PENGELUARAN:
+DETAIL PENGELUARAN (lihat label & catatan untuk memahami KONTEKS):
 ${txList}
 
-TUGAS: Beri skor 1-10, roast nyinyir, identifikasi 2-4 pengeluaran tidak perlu, 3 nasehat relate anak muda, 1 tips minggu depan.
+PANDUAN ANALISIS:
+1. JANGAN langsung judge pengeluaran hanya dari jumlahnya. Pahami KENAPA user mengeluarkan uang itu:
+   - Pengeluaran untuk keluarga, kesehatan, pendidikan = kebutuhan penting, jangan dikritik
+   - Pengeluaran investasi/aset (mobil, kursus, alat kerja) = bagus tapi sesuaikan kemampuan
+   - Pengeluaran sosial (traktir teman, donasi) = positif, apresiasi
+   - Yang perlu disorot: pengeluaran impulsif/konsumtif berulang TANPA nilai jangka panjang
+2. Bandingkan pengeluaran vs pemasukan — jika pengeluaran besar tapi pemasukan kecil, sarankan cara MENAMBAH pemasukan, bukan hanya memotong pengeluaran
+3. Berikan saran ACTIONABLE yang spesifik, bukan sekedar "hemat dong" — contoh: "coba jualan online untuk nambahin pemasukan", "masak sendiri bisa hemat Rp500rb/minggu"
+4. Jika ada catatan user di transaksi, gunakan info itu untuk memahami motivasi spending
+
+TUGAS:
+- Skor 1-10 (pertimbangkan KONTEKS, bukan hanya angka)
+- Roast nyinyir tapi MEMAHAMI situasi user (2-3 kalimat)
+- Identifikasi 2-4 pengeluaran yang BISA DIOPTIMALKAN (bukan "tidak perlu" — jelaskan alternatif lebih hemat)
+- 3 saran yang benar-benar MEMBANTU dan RELATE dengan situasi user
+- 1 tips actionable untuk minggu depan
 
 Format JSON:
-{"score":N,"roast":"2-3 kalimat","biggestSpend":"kategori","tip":"tips singkat","unnecessarySpending":[{"item":"nama","amount":N,"reason":"kenapa"}],"advice":["1","2","3"],"savingPotential":N}
+{"score":N,"roast":"2-3 kalimat","biggestSpend":"kategori","tip":"tips spesifik & actionable","unnecessarySpending":[{"item":"nama","amount":N,"reason":"kenapa bisa dioptimalkan + alternatifnya"}],"advice":["saran1","saran2","saran3"],"savingPotential":N}
 
-Bahasa casual, gaul, tetep supportif.`;
+Bahasa casual, gaul, tetep supportif. Tunjukkan bahwa kamu PAHAM kenapa user belanja itu, baru kasih saran yang lebih baik.`;
 
       try {
         const result = await this.ai.generateText(prompt);
