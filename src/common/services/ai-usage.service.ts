@@ -1,10 +1,10 @@
 import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 
-export type AiFeature = 'briefing' | 'weekly_roast';
+export type AiFeature = 'briefing' | 'weekly_roast' | 'food_recommend';
 
 interface LimitConfig {
-  field: keyof Pick<any, 'aiBriefingLimit' | 'aiWeeklyRoastLimit'>;
+  field: keyof Pick<any, 'aiBriefingLimit' | 'aiWeeklyRoastLimit' | 'aiFoodLimit'>;
   period: 'day' | 'week';
   label: string;
 }
@@ -12,6 +12,7 @@ interface LimitConfig {
 const FEATURE_CONFIG: Record<AiFeature, LimitConfig> = {
   briefing: { field: 'aiBriefingLimit', period: 'day', label: 'AI Briefing' },
   weekly_roast: { field: 'aiWeeklyRoastLimit', period: 'week', label: 'Weekly Roast' },
+  food_recommend: { field: 'aiFoodLimit', period: 'day', label: 'Rekomendasi Makanan' },
 };
 
 @Injectable()

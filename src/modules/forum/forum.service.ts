@@ -212,6 +212,28 @@ export class ForumService {
       } catch (e) { this.logger.warn('Notif reminder failed:', e); }
     }
 
+    // Notify for questions
+    if (dto.category === 'QUESTION') {
+      try {
+        await this.notificationService.notifyClassMembers(
+          classId, userId,
+          '❓ Pertanyaan Baru',
+          `${post.author.fullName} mengajukan pertanyaan: ${autoTitle}`,
+        );
+      } catch (e) { this.logger.warn('Notif question failed:', e); }
+    }
+
+    // Notify for polls
+    if (dto.category === 'POLL') {
+      try {
+        await this.notificationService.notifyClassMembers(
+          classId, userId,
+          '📊 Voting Baru',
+          `${post.author.fullName} membuat voting: ${autoTitle}`,
+        );
+      } catch (e) { this.logger.warn('Notif poll failed:', e); }
+    }
+
     const postResult = {
       id: post.id,
       classId: post.classId,
@@ -509,6 +531,18 @@ export class ForumService {
 
     // Emit via Socket.IO
     this.forumGateway.emitPinToggled(post.classId, postId, updated.isPinned);
+
+    // Notify post author when someone pins their post
+    if (updated.isPinned && post.authorId !== userId) {
+      try {
+        const actor = await this.prisma.user.findUnique({ where: { id: userId }, select: { fullName: true } });
+        await this.notificationService.createNotification(
+          post.authorId,
+          '📌 Pesan Disematkan',
+          `${actor?.fullName || 'Seseorang'} menyematkan pesan Anda: "${post.title?.slice(0, 50)}"`,
+        );
+      } catch (e) { this.logger.warn('Notif pin failed:', e); }
+    }
 
     return { isPinned: updated.isPinned };
   }

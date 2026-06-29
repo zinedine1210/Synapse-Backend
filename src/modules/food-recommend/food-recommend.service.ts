@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 
 @Injectable()
 export class FoodRecommendService {
@@ -11,6 +12,7 @@ export class FoodRecommendService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly aiJob: AiJobService,
+    private readonly aiUsage: AiUsageService,
   ) {}
 
   async getPreference(userId: string) {
@@ -29,6 +31,14 @@ export class FoodRecommendService {
     spicyLevel?: number;
     dietType?: string;
     avgMealBudget?: number;
+    calorieLimit?: number;
+    proteinTarget?: number;
+    healthGoals?: string[];
+    allergies?: string[];
+    breakfastHabit?: string;
+    lunchHabit?: string;
+    dinnerHabit?: string;
+    snackHabit?: string;
   }) {
     return this.prisma.foodPreference.upsert({
       where: { userId },
@@ -60,9 +70,40 @@ export class FoodRecommendService {
   }
 
   /**
+   * Build a compact preference context string for AI prompts
+   */
+  private buildPrefContext(pref: any, remaining: number | null): string {
+    const lines: string[] = [];
+    if (pref.dislikedIngredients?.length) lines.push(`Bahan tidak disukai: ${pref.dislikedIngredients.join(', ')}`);
+    if (pref.allergies?.length) lines.push(`ALERGI (WAJIB dihindari): ${pref.allergies.join(', ')}`);
+    if (pref.preferredCuisines?.length) lines.push(`Masakan favorit: ${pref.preferredCuisines.join(', ')}`);
+    lines.push(`Level pedas: ${pref.spicyLevel}/3`);
+    lines.push(`Diet: ${pref.dietType}`);
+    if (pref.calorieLimit) lines.push(`Batas kalori harian: ${pref.calorieLimit} kkal`);
+    if (pref.proteinTarget) lines.push(`Target protein harian: ${pref.proteinTarget}g`);
+    if (pref.healthGoals?.length) lines.push(`Tujuan kesehatan: ${pref.healthGoals.join(', ')}`);
+    if (remaining !== null) lines.push(`Sisa budget makan bulan ini: Rp ${remaining.toLocaleString('id-ID')}`);
+    if (pref.avgMealBudget) lines.push(`Budget per makan: Rp ${pref.avgMealBudget.toLocaleString('id-ID')}`);
+    return lines.join('\n- ');
+  }
+
+  /**
+   * Build eating habits context for meal plan AI prompts
+   */
+  private buildHabitsContext(pref: any): string {
+    const habits: string[] = [];
+    if (pref.breakfastHabit) habits.push(`Sarapan biasa: ${pref.breakfastHabit}`);
+    if (pref.lunchHabit) habits.push(`Makan siang biasa: ${pref.lunchHabit}`);
+    if (pref.dinnerHabit) habits.push(`Makan malam biasa: ${pref.dinnerHabit}`);
+    if (pref.snackHabit) habits.push(`Camilan biasa: ${pref.snackHabit}`);
+    return habits.length > 0 ? habits.join('\n- ') : '';
+  }
+
+  /**
    * Mode A: Foto kulkas — extract bahan, generate resep
    */
   async recommendFromFridge(userId: string, imageBase64: string, mimeType: string) {
+    await this.aiUsage.checkAndRecord(userId, 'food_recommend');
     return this.aiJob.runAsync(userId, 'food_from_fridge', async () => {
     const pref = await this.getPreference(userId);
 
@@ -83,18 +124,18 @@ export class FoodRecommendService {
     const foodSpent = foodTx._sum.amount ?? 0;
     const remaining = foodBudget > 0 ? foodBudget - foodSpent : null;
 
-    const prompt = `Kamu adalah asisten masak untuk anak muda Indonesia.
+    const prompt = `Kamu adalah asisten masak & nutrisi untuk anak muda Indonesia.
 
 Dari foto kulkas/bahan makanan ini, identifikasi semua bahan yang terlihat.
 Lalu berikan 3 resep sederhana yang bisa dibuat anak muda.
 
 Preferensi user:
-- Bahan tidak disukai: ${pref.dislikedIngredients.join(', ') || 'tidak ada'}
-- Masakan favorit: ${pref.preferredCuisines.join(', ') || 'semua'}
-- Level pedas: ${pref.spicyLevel}/3
-- Diet: ${pref.dietType}
-${remaining !== null ? `- Sisa budget makan bulan ini: Rp ${remaining.toLocaleString('id-ID')}` : ''}
-${pref.avgMealBudget ? `- Budget per makan: Rp ${pref.avgMealBudget.toLocaleString('id-ID')}` : ''}
+- ${this.buildPrefContext(pref, remaining)}
+
+PENTING:
+- Perhatikan alergi dan bahan yang tidak disukai
+- Jika user punya batas kalori, pastikan resep sesuai target
+- Seimbangkan nutrisi (protein, karbo, lemak)
 
 Response dalam JSON:
 {
@@ -164,6 +205,7 @@ Response dalam JSON:
    * Mode B: Foto menu restoran — parse item + filter
    */
   async recommendFromMenu(userId: string, imageBase64: string, mimeType: string, filter?: string) {
+    await this.aiUsage.checkAndRecord(userId, 'food_recommend');
     return this.aiJob.runAsync(userId, 'food_from_menu', async () => {
     const pref = await this.getPreference(userId);
 
@@ -171,6 +213,8 @@ Response dalam JSON:
 
 User: pedas ${pref.spicyLevel}/3, diet ${pref.dietType}${pref.avgMealBudget ? `, budget Rp${pref.avgMealBudget.toLocaleString('id-ID')}` : ''}
 Bahan tidak disukai: ${pref.dislikedIngredients.join(', ') || 'tidak ada'}
+${pref.allergies?.length ? `ALERGI (WAJIB hindari): ${pref.allergies.join(', ')}` : ''}
+${pref.calorieLimit ? `Batas kalori per makan: ~${Math.round(pref.calorieLimit / 3)} kkal` : ''}
 
 JSON response:
 { "recommendations": [{ "name": "...", "price": number, "reason": "alasan singkat", "calories": number, "tags": ["hemat"] }] }`;
@@ -277,24 +321,25 @@ JSON response:
   // === Text-based ingredient mode ===
 
   async recommendFromText(userId: string, ingredients: string[]) {
+    await this.aiUsage.checkAndRecord(userId, 'food_recommend');
     return this.aiJob.runAsync(userId, 'food_from_text', async () => {
       const pref = await this.getPreference(userId);
       const budgetInfo = await this.getRemainingFoodBudget(userId);
       const remaining = budgetInfo.remaining;
 
-      const prompt = `Kamu adalah asisten masak untuk anak muda Indonesia.
+      const prompt = `Kamu adalah asisten masak & nutrisi untuk anak muda Indonesia.
 
 User punya bahan-bahan berikut: ${ingredients.join(', ')}
 
 Berikan 3 resep sederhana yang bisa dibuat dari bahan tersebut (boleh tambah bumbu dasar).
 
 Preferensi user:
-- Bahan tidak disukai: ${pref.dislikedIngredients.join(', ') || 'tidak ada'}
-- Masakan favorit: ${pref.preferredCuisines.join(', ') || 'semua'}
-- Level pedas: ${pref.spicyLevel}/3
-- Diet: ${pref.dietType}
-${remaining !== null ? `- Sisa budget makan bulan ini: Rp ${remaining.toLocaleString('id-ID')}` : ''}
-${pref.avgMealBudget ? `- Budget per makan: Rp ${pref.avgMealBudget.toLocaleString('id-ID')}` : ''}
+- ${this.buildPrefContext(pref, remaining)}
+
+PENTING:
+- Perhatikan alergi dan bahan yang tidak disukai
+- Jika user punya batas kalori, pastikan resep sesuai target
+- Seimbangkan nutrisi (protein, karbo, lemak)
 
 Response dalam JSON:
 {
@@ -381,55 +426,56 @@ Response dalam JSON:
   // === Weekly Meal Plan ===
 
   async generateMealPlan(userId: string, days = 7) {
+    await this.aiUsage.checkAndRecord(userId, 'food_recommend');
     return this.aiJob.runAsync(userId, 'food_meal_plan', async () => {
       const pref = await this.getPreference(userId);
       const budgetInfo = await this.getRemainingFoodBudget(userId);
       const remaining = budgetInfo.remaining;
       const dailyBudget = pref.avgMealBudget || (remaining ? Math.round(remaining / days) : 25000);
+      const habitsContext = this.buildHabitsContext(pref);
 
-      const prompt = `Kamu adalah perencana meal plan untuk anak muda Indonesia (mahasiswa/anak kos).
+      const prompt = `Kamu adalah perencana meal plan & ahli nutrisi untuk anak muda Indonesia (mahasiswa/anak kos).
 
-Buatkan meal plan ${days} hari (makan siang & makan malam). Setiap hari ada 2 meal.
+Buatkan meal plan ${days} hari (sarapan, makan siang, & makan malam). Setiap hari ada 3 meal.
 
-Preferensi:
+PREFERENSI USER:
 - Budget per hari: Rp ${dailyBudget.toLocaleString('id-ID')}
-- Bahan tidak disukai: ${pref.dislikedIngredients.join(', ') || 'tidak ada'}
-- Masakan favorit: ${pref.preferredCuisines.join(', ') || 'semua'}
-- Level pedas: ${pref.spicyLevel}/3
-- Diet: ${pref.dietType}
-${remaining !== null ? `- Total sisa budget: Rp ${remaining.toLocaleString('id-ID')}` : ''}
+- ${this.buildPrefContext(pref, remaining)}
+${habitsContext ? `\nKEBIASAAN MAKAN USER:\n- ${habitsContext}` : ''}
 
-PENTING: Variasikan menu (jangan ulang), perhatikan nutrisi seimbang, dan sesuaikan budget.
+PANDUAN PENTING:
+1. PAHAMI kebiasaan makan user sebelum merekomendasikan:
+   - Jika user biasa makan nasi goreng tiap pagi, jangan langsung ganti semua — transisi perlahan
+   - Berikan variasi dari makanan yang mirip tapi lebih sehat jika kebiasaannya kurang baik
+   - Misal biasa makan mie instan → sarankan mie ayam homemade atau nasi + telur
+2. Jika user punya BATAS KALORI, pastikan total harian tidak melebihi target
+3. Jika user punya TARGET PROTEIN, pastikan setiap meal punya protein yang cukup
+4. VARIASIKAN menu (jangan ulang), perhatikan nutrisi seimbang
+5. Sertakan "healthNote" di setiap meal: tips singkat kenapa makanan ini baik atau alternatif yang lebih sehat
+6. Jika kebiasaan makan user tidak sehat, berikan transisi bertahap, bukan perubahan drastis
+7. Perhatikan alergi — WAJIB dihindari
 
 JSON response:
 {
   "dailyBudget": ${dailyBudget},
   "totalEstimatedCost": number,
+  "dailyCalorieTarget": ${pref.calorieLimit || 2000},
   "days": [
     {
       "day": 1,
+      "totalCalories": number,
       "meals": [
         {
-          "type": "lunch",
+          "type": "breakfast" | "lunch" | "dinner",
           "name": "Nama Makanan",
           "estimatedCost": 12000,
           "calories": 400,
           "protein": 20,
           "carbs": 50,
           "fat": 12,
-          "tags": ["homecook"],
-          "note": "Tips singkat"
-        },
-        {
-          "type": "dinner",
-          "name": "Nama Makanan",
-          "estimatedCost": 15000,
-          "calories": 450,
-          "protein": 25,
-          "carbs": 40,
-          "fat": 15,
-          "tags": ["beli"],
-          "note": "Tips singkat"
+          "tags": ["homecook", "high-protein"],
+          "note": "Tips singkat",
+          "healthNote": "Kenapa makanan ini baik / alternatif lebih sehat"
         }
       ]
     }
