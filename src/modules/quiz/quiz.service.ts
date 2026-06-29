@@ -120,4 +120,39 @@ export class QuizService {
       passed: attempt.passed,
     };
   }
+
+  /** Get all quiz attempts for a session (leaderboard / history) */
+  async getSessionAttempts(sessionId: string, userId: string) {
+    // Verify user is a member of the class that owns this session
+    const session = await this.prisma.session.findUnique({
+      where: { id: sessionId },
+      select: { classId: true },
+    });
+    if (!session) return [];
+    const member = await this.prisma.classMember.findUnique({
+      where: { classId_userId: { classId: session.classId, userId } },
+    });
+    if (!member) throw new ForbiddenException('Anda bukan anggota kelas ini.');
+
+    const attempts = await this.prisma.quizAttempt.findMany({
+      where: {
+        quiz: { sessionId },
+      },
+      include: {
+        user: { select: { id: true, fullName: true, avatarUrl: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return attempts.map(a => ({
+      id: a.id,
+      userId: a.userId,
+      userName: a.user.fullName,
+      userAvatar: a.user.avatarUrl,
+      score: a.score,
+      passed: a.passed,
+      createdAt: a.createdAt,
+    }));
+  }
 }

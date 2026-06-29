@@ -344,6 +344,68 @@ export class MaterialService {
     };
   }
 
+  /** Retry AI processing untuk material yang gagal */
+  async retryProcessing(materialId: string, userId: string) {
+    const material = await this.prisma.material.findUnique({
+      where: { id: materialId },
+      include: {
+        session: {
+          include: { class: { include: { members: { where: { userId } } } } },
+        },
+      },
+    });
+
+    if (!material) throw new NotFoundException('Material tidak ditemukan.');
+    if (material.session.class.members.length === 0) {
+      throw new ForbiddenException('Anda tidak memiliki akses ke material ini.');
+    }
+    if (material.status !== 'FAILED') {
+      throw new BadRequestException('Hanya material yang gagal yang dapat diproses ulang.');
+    }
+
+    // Reset status ke PROCESSING
+    await this.prisma.material.update({
+      where: { id: materialId },
+      data: { status: 'PROCESSING', errorMsg: null, aiSummary: null },
+    });
+
+    // Download file from Supabase Storage and reprocess
+    try {
+      const url = new URL(material.fileUrl);
+      const pathParts = url.pathname.split('/storage/v1/object/public/materials/');
+      if (!pathParts[1]) throw new Error('Invalid file URL');
+
+      const { data: fileData, error: downloadError } = await this.supabase.storage
+        .from('materials')
+        .download(decodeURIComponent(pathParts[1]));
+
+      if (downloadError || !fileData) {
+        throw new Error('Gagal mengunduh file dari storage.');
+      }
+
+      const buffer = Buffer.from(await fileData.arrayBuffer());
+      const mimeType = material.fileType === 'AUDIO' ? 'audio/mpeg'
+        : material.fileType === 'IMAGE' ? 'image/jpeg'
+        : 'application/pdf';
+
+      this.processAiInBackground(materialId, buffer, mimeType, userId, material.sessionId, material.fileName).catch(
+        (err) => this.logger.error(`Retry AI processing gagal untuk material ${materialId}:`, err),
+      );
+
+      return {
+        message: 'Proses digitalisasi ulang dimulai...',
+        materialId,
+        status: 'PROCESSING',
+      };
+    } catch (error) {
+      await this.prisma.material.update({
+        where: { id: materialId },
+        data: { status: 'FAILED', errorMsg: error instanceof Error ? error.message : 'Gagal retry' },
+      });
+      throw new BadRequestException('Gagal memulai proses ulang.');
+    }
+  }
+
   /** Memastikan bucket ada di Supabase Storage */
   private async ensureBucketExists(bucketName: string) {
     try {

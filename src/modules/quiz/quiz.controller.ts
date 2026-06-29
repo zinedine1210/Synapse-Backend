@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { QuizService } from './quiz.service';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
@@ -26,5 +26,11 @@ export class QuizController {
   @Post('attempt')
   submitAttempt(@GetUser() user: User, @Body() dto: AttemptQuizDto) {
     return this.quizService.submitAttempt(user.id, dto);
+  }
+
+  /** GET /api/v1/quizzes/attempts/:sessionId */
+  @Get('attempts/:sessionId')
+  getAttempts(@Param('sessionId') sessionId: string, @GetUser() user: User) {
+    return this.quizService.getSessionAttempts(sessionId, user.id);
   }
 }

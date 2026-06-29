@@ -35,6 +35,11 @@ export class UpdatePricingPlanDto {
   aiWeeklyRoastLimit?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiFoodLimit?: number;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   features?: string[];

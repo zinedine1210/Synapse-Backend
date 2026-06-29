@@ -48,6 +48,16 @@ export class MaterialController {
   }
 
   /**
+   * POST /api/v1/materials/:id/retry
+   * Retry AI processing untuk material yang gagal.
+   */
+  @Post(':id/retry')
+  @HttpCode(HttpStatus.ACCEPTED)
+  retryProcessing(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User) {
+    return this.materialService.retryProcessing(id, user.id);
+  }
+
+  /**
    * DELETE /api/v1/materials/:id
    * Hapus material dan file dari storage.
    */
