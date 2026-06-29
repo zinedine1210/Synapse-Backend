@@ -105,9 +105,29 @@ export class SuperadminService {
   }
 
   async deletePricingPlan(id: string) {
-    return this.prisma.pricingPlan.delete({
-      where: { id },
+    const plan = await this.prisma.pricingPlan.findUnique({ where: { id } });
+    if (!plan) throw new NotFoundException('Plan tidak ditemukan.');
+    if (plan.name === 'FREE') throw new BadRequestException('Plan FREE tidak bisa dihapus.');
+
+    // Check if any users are on this plan
+    const usersOnPlan = await this.prisma.user.count({ where: { plan: plan.name } });
+    if (usersOnPlan > 0) {
+      throw new BadRequestException(
+        `Tidak bisa menghapus plan "${plan.name}" karena masih ada ${usersOnPlan} user yang menggunakannya. Pindahkan user terlebih dahulu.`,
+      );
+    }
+
+    // Check if any pending payments reference this plan
+    const pendingPayments = await this.prisma.payment.count({
+      where: { plan: plan.name, transactionStatus: 'pending' },
     });
+    if (pendingPayments > 0) {
+      throw new BadRequestException(
+        `Tidak bisa menghapus plan "${plan.name}" karena ada ${pendingPayments} pembayaran pending.`,
+      );
+    }
+
+    return this.prisma.pricingPlan.delete({ where: { id } });
   }
 
   async assignUserPlan(userId: string, planName: string) {
@@ -466,6 +486,194 @@ export class SuperadminService {
       splitBills: { total: totalSplitBills, totalAmount: splitBillAmount._sum.totalAmount ?? 0 },
       todos: { completionRate, completed: completedTodos, total: totalTodos },
       kolektif: { total: totalKolektif, totalCollected: kolektifCollected._sum.amount ?? 0 },
+    };
+  }
+
+  // ─── Promo Management ──────────────────────────────────────────────────────
+
+  async getPromos() {
+    return this.prisma.promoDiscount.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createPromo(dto: {
+    code: string;
+    description?: string;
+    discountType?: string;
+    discountPercent?: number;
+    discountAmount?: number;
+    maxUses?: number;
+    applicablePlans?: string[];
+    autoApply?: boolean;
+    validFrom?: string;
+    validUntil: string;
+  }) {
+    return this.prisma.promoDiscount.create({
+      data: {
+        code: dto.code.toUpperCase().trim(),
+        description: dto.description,
+        discountType: dto.discountType || 'percent',
+        discountPercent: dto.discountPercent || 0,
+        discountAmount: dto.discountAmount || 0,
+        maxUses: dto.maxUses || 0,
+        applicablePlans: dto.applicablePlans || [],
+        autoApply: dto.autoApply || false,
+        validFrom: dto.validFrom ? new Date(dto.validFrom) : new Date(),
+        validUntil: new Date(dto.validUntil),
+      },
+    });
+  }
+
+  async updatePromo(id: string, dto: Partial<{
+    code: string;
+    description: string;
+    discountType: string;
+    discountPercent: number;
+    discountAmount: number;
+    maxUses: number;
+    applicablePlans: string[];
+    autoApply: boolean;
+    validFrom: string;
+    validUntil: string;
+    isActive: boolean;
+  }>) {
+    const data: any = { ...dto };
+    if (dto.code) data.code = dto.code.toUpperCase().trim();
+    if (dto.validFrom) data.validFrom = new Date(dto.validFrom);
+    if (dto.validUntil) data.validUntil = new Date(dto.validUntil);
+    return this.prisma.promoDiscount.update({ where: { id }, data });
+  }
+
+  async deletePromo(id: string) {
+    await this.prisma.promoDiscount.delete({ where: { id } });
+    return { message: 'Promo berhasil dihapus.' };
+  }
+
+  // ─── Revenue Analytics ─────────────────────────────────────────────────────
+
+  async getRevenueAnalytics() {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+    // Revenue this month
+    const thisMonthPayments = await this.prisma.payment.findMany({
+      where: { transactionStatus: 'settlement', createdAt: { gte: thisMonthStart } },
+      select: { grossAmount: true, plan: true, createdAt: true },
+    });
+    const thisMonthRevenue = thisMonthPayments.reduce((sum, p) => sum + p.grossAmount, 0);
+
+    // Revenue last month
+    const lastMonthPayments = await this.prisma.payment.findMany({
+      where: { transactionStatus: 'settlement', createdAt: { gte: lastMonthStart, lte: lastMonthEnd } },
+      select: { grossAmount: true },
+    });
+    const lastMonthRevenue = lastMonthPayments.reduce((sum, p) => sum + p.grossAmount, 0);
+
+    // Total revenue all-time
+    const allPayments = await this.prisma.payment.findMany({
+      where: { transactionStatus: 'settlement' },
+      select: { grossAmount: true },
+    });
+    const totalRevenue = allPayments.reduce((sum, p) => sum + p.grossAmount, 0);
+
+    // Active subscribers by plan
+    const subscribersByPlan = await this.prisma.user.groupBy({
+      by: ['plan'],
+      _count: { id: true },
+    });
+
+    // Total users
+    const totalUsers = await this.prisma.user.count();
+    const paidUsers = await this.prisma.user.count({ where: { plan: { not: 'FREE' } } });
+
+    // Monthly recurring revenue (MRR) estimate
+    const planPrices = await this.prisma.pricingPlan.findMany({
+      select: { name: true, price: true, durationDays: true },
+    });
+    const priceMap = Object.fromEntries(planPrices.map(p => [p.name, { price: p.price, days: p.durationDays }]));
+
+    let estimatedMRR = 0;
+    for (const sub of subscribersByPlan) {
+      const planInfo = priceMap[sub.plan];
+      if (planInfo && planInfo.price > 0) {
+        const monthlyEquiv = planInfo.days >= 365
+          ? planInfo.price / 12
+          : planInfo.price;
+        estimatedMRR += monthlyEquiv * sub._count.id;
+      }
+    }
+
+    // AI cost estimate (based on usage this month)
+    const aiUsageThisMonth = await this.prisma.aiUsageLog.count({
+      where: { createdAt: { gte: thisMonthStart } },
+    });
+    // Average cost per AI request (blended Gemini + OpenAI)
+    const AVG_COST_PER_REQUEST = 13; // Rp 13 average
+    const estimatedAiCost = aiUsageThisMonth * AVG_COST_PER_REQUEST;
+
+    // Estimated profit
+    const estimatedProfit = thisMonthRevenue - estimatedAiCost;
+
+    // Revenue by plan this month
+    const revenueByPlan: Record<string, number> = {};
+    for (const p of thisMonthPayments) {
+      revenueByPlan[p.plan] = (revenueByPlan[p.plan] || 0) + p.grossAmount;
+    }
+
+    // Conversion rate
+    const conversionRate = totalUsers > 0 ? Math.round((paidUsers / totalUsers) * 1000) / 10 : 0;
+
+    // Revenue growth
+    const revenueGrowth = lastMonthRevenue > 0
+      ? Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 1000) / 10
+      : thisMonthRevenue > 0 ? 100 : 0;
+
+    // Daily revenue for chart (last 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recentPayments = await this.prisma.payment.findMany({
+      where: { transactionStatus: 'settlement', createdAt: { gte: thirtyDaysAgo } },
+      select: { grossAmount: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const dailyRevenue: { date: string; amount: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const day = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const dateStr = day.toISOString().split('T')[0];
+      const dayTotal = recentPayments
+        .filter(p => p.createdAt.toISOString().split('T')[0] === dateStr)
+        .reduce((sum, p) => sum + p.grossAmount, 0);
+      dailyRevenue.push({ date: dateStr, amount: dayTotal });
+    }
+
+    return {
+      summary: {
+        totalRevenue,
+        thisMonthRevenue,
+        lastMonthRevenue,
+        revenueGrowth,
+        estimatedMRR: Math.round(estimatedMRR),
+        estimatedAiCost,
+        estimatedProfit,
+        profitMargin: thisMonthRevenue > 0 ? Math.round((estimatedProfit / thisMonthRevenue) * 100) : 0,
+      },
+      users: {
+        total: totalUsers,
+        paid: paidUsers,
+        free: totalUsers - paidUsers,
+        conversionRate,
+      },
+      subscribersByPlan: subscribersByPlan.map(s => ({ plan: s.plan, count: s._count.id })),
+      revenueByPlan,
+      aiUsage: {
+        totalRequests: aiUsageThisMonth,
+        estimatedCost: estimatedAiCost,
+        avgCostPerRequest: AVG_COST_PER_REQUEST,
+      },
+      dailyRevenue,
     };
   }
 }

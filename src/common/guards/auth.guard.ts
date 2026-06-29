@@ -74,8 +74,9 @@ export class AuthGuard implements CanActivate {
     }
 
     // 2. Check user cache (avoid DB round-trip)
+    const forceRefresh = request.headers['x-force-refresh'] === '1';
     const cachedUser = this.userCache.get(userId);
-    if (cachedUser && cachedUser.expiresAt > Date.now()) {
+    if (!forceRefresh && cachedUser && cachedUser.expiresAt > Date.now()) {
       request.user = cachedUser.data;
       return true;
     }

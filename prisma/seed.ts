@@ -30,6 +30,32 @@ async function main() {
     'skripsweet',
   ];
 
+  const STARTER_FEATURES = [
+    // Akademik & Kelas (mid)
+    'class', 'class_settings', 'class_sessions', 'class_custom_tabs',
+    'forum', 'forum_announcement', 'forum_poll', 'forum_discussion', 'forum_file_upload',
+    'quiz', 'task', 'task_ai_solver',
+    'exam_prediction', 'exam_manual',
+    'unread_tracking',
+    // AI & Dokumen (mid)
+    'ai_digitalization', 'schedule_parser', 'pdf_export', 'daily_briefing',
+    // Keuangan (mid)
+    'duit_tracker', 'duit_tracker_budget', 'duit_tracker_saving_tree', 'duit_tracker_summary', 'duit_tracker_quick_input',
+    'duit_tracker_bills', 'duit_tracker_debts', 'duit_tracker_wishlist', 'duit_tracker_challenges',
+    'si_bawel', 'split_bill', 'receipt_scanner',
+    // Produktivitas (mid)
+    'todo_list', 'todo_calendar', 'todo_categories', 'todo_subtasks', 'todo_recurring',
+    'qna_public', 'qna_voting', 'qna_ai_answer',
+    'food_recommend',
+    // Gamifikasi & UX (mid)
+    'gamification', 'gamification_streak', 'gamification_leaderboard',
+    'notification', 'command_palette', 'quick_action',
+    // Fun & Engagement (mid)
+    'virtual_pet', 'streak_calendar', 'quiz_keuangan', 'profile_card',
+    // Skripsi (mid)
+    'skripsweet', 'skripsweet_ai_chat',
+  ];
+
   const PRO_FEATURES = [
     // Akademik & Kelas (full)
     'class', 'class_settings', 'class_sessions', 'class_custom_tabs',
@@ -60,39 +86,122 @@ async function main() {
     'skripsweet', 'skripsweet_ai_chat', 'skripsweet_journal_search', 'skripsweet_bibliography',
   ];
 
+  // ── FREE ──
   await prisma.pricingPlan.upsert({
     where: { name: 'FREE' },
-    update: { features: FREE_FEATURES },
+    update: {
+      features: FREE_FEATURES,
+      description: 'Paket gratis untuk mencoba Synapse',
+      maxUploadPerMonth: 5, maxFileSizeMb: 5, aiRequestLimit: 20,
+      aiBriefingLimit: 1, aiWeeklyRoastLimit: 0, aiFoodLimit: 1,
+      aiDigitalizationLimit: 1, aiInsightLimit: 0, aiExamPredictionLimit: 0,
+      aiQuizGenLimit: 1, aiReceiptScanLimit: 1, aiSkripsweetLimit: 2, aiTodoParseLimit: 2,
+      price: 0, durationDays: 0,
+    },
     create: {
       name: 'FREE',
-      description: 'Paket gratis untuk mencoba asisten AI kuliah',
-      maxUploadPerMonth: 5,
-      maxFileSizeMb: 10,
-      aiRequestLimit: 10,
-      aiBriefingLimit: 1,
-      aiWeeklyRoastLimit: 1,
-      features: FREE_FEATURES,
-      price: 0,
+      description: 'Paket gratis untuk mencoba Synapse',
+      maxUploadPerMonth: 5, maxFileSizeMb: 5, aiRequestLimit: 20,
+      aiBriefingLimit: 1, aiWeeklyRoastLimit: 0, aiFoodLimit: 1,
+      aiDigitalizationLimit: 1, aiInsightLimit: 0, aiExamPredictionLimit: 0,
+      aiQuizGenLimit: 1, aiReceiptScanLimit: 1, aiSkripsweetLimit: 2, aiTodoParseLimit: 2,
+      features: FREE_FEATURES, price: 0, durationDays: 0,
     },
   });
 
+  // ── STARTER (bulanan) — Rp 24.900 ──
+  await prisma.pricingPlan.upsert({
+    where: { name: 'STARTER' },
+    update: {
+      features: STARTER_FEATURES,
+      description: 'Asisten kuliah harian untuk mahasiswa aktif',
+      maxUploadPerMonth: 30, maxFileSizeMb: 20, aiRequestLimit: 250,
+      aiBriefingLimit: 5, aiWeeklyRoastLimit: 1, aiFoodLimit: 8,
+      aiDigitalizationLimit: 8, aiInsightLimit: 3, aiExamPredictionLimit: 5,
+      aiQuizGenLimit: 8, aiReceiptScanLimit: 8, aiSkripsweetLimit: 15, aiTodoParseLimit: 15,
+      price: 24900, durationDays: 30,
+    },
+    create: {
+      name: 'STARTER',
+      description: 'Asisten kuliah harian untuk mahasiswa aktif',
+      maxUploadPerMonth: 30, maxFileSizeMb: 20, aiRequestLimit: 250,
+      aiBriefingLimit: 5, aiWeeklyRoastLimit: 1, aiFoodLimit: 8,
+      aiDigitalizationLimit: 8, aiInsightLimit: 3, aiExamPredictionLimit: 5,
+      aiQuizGenLimit: 8, aiReceiptScanLimit: 8, aiSkripsweetLimit: 15, aiTodoParseLimit: 15,
+      features: STARTER_FEATURES, price: 24900, durationDays: 30,
+    },
+  });
+
+  // ── STARTER_YEARLY — Rp 249.000 (hemat 17%) ──
+  await prisma.pricingPlan.upsert({
+    where: { name: 'STARTER_YEARLY' },
+    update: {
+      features: STARTER_FEATURES,
+      description: 'Starter setahun penuh — hemat 17%',
+      maxUploadPerMonth: 30, maxFileSizeMb: 20, aiRequestLimit: 250,
+      aiBriefingLimit: 5, aiWeeklyRoastLimit: 1, aiFoodLimit: 8,
+      aiDigitalizationLimit: 8, aiInsightLimit: 3, aiExamPredictionLimit: 5,
+      aiQuizGenLimit: 8, aiReceiptScanLimit: 8, aiSkripsweetLimit: 15, aiTodoParseLimit: 15,
+      price: 249000, durationDays: 365,
+    },
+    create: {
+      name: 'STARTER_YEARLY',
+      description: 'Starter setahun penuh — hemat 17%',
+      maxUploadPerMonth: 30, maxFileSizeMb: 20, aiRequestLimit: 250,
+      aiBriefingLimit: 5, aiWeeklyRoastLimit: 1, aiFoodLimit: 8,
+      aiDigitalizationLimit: 8, aiInsightLimit: 3, aiExamPredictionLimit: 5,
+      aiQuizGenLimit: 8, aiReceiptScanLimit: 8, aiSkripsweetLimit: 15, aiTodoParseLimit: 15,
+      features: STARTER_FEATURES, price: 249000, durationDays: 365,
+    },
+  });
+
+  // ── PRO (bulanan) — Rp 39.900 (hanya +Rp 15k dari Starter, tapi 4x lipat limit!) ──
   await prisma.pricingPlan.upsert({
     where: { name: 'PRO' },
-    update: { features: PRO_FEATURES },
+    update: {
+      features: PRO_FEATURES,
+      description: 'Full power — unlimited AI untuk produktivitas & skripsi',
+      maxUploadPerMonth: 200, maxFileSizeMb: 50, aiRequestLimit: 999,
+      aiBriefingLimit: 99, aiWeeklyRoastLimit: 3, aiFoodLimit: 20,
+      aiDigitalizationLimit: 30, aiInsightLimit: 10, aiExamPredictionLimit: 10,
+      aiQuizGenLimit: 20, aiReceiptScanLimit: 20, aiSkripsweetLimit: 50, aiTodoParseLimit: 50,
+      price: 39900, durationDays: 30,
+    },
     create: {
       name: 'PRO',
-      description: 'Paket lengkap untuk produktivitas belajar maksimal',
-      maxUploadPerMonth: 50,
-      maxFileSizeMb: 25,
-      aiRequestLimit: 200,
-      aiBriefingLimit: 5,
-      aiWeeklyRoastLimit: 3,
-      features: PRO_FEATURES,
-      price: 49000,
+      description: 'Full power — unlimited AI untuk produktivitas & skripsi',
+      maxUploadPerMonth: 200, maxFileSizeMb: 50, aiRequestLimit: 999,
+      aiBriefingLimit: 99, aiWeeklyRoastLimit: 3, aiFoodLimit: 20,
+      aiDigitalizationLimit: 30, aiInsightLimit: 10, aiExamPredictionLimit: 10,
+      aiQuizGenLimit: 20, aiReceiptScanLimit: 20, aiSkripsweetLimit: 50, aiTodoParseLimit: 50,
+      features: PRO_FEATURES, price: 39900, durationDays: 30,
     },
   });
 
-  console.log('✅  PricingPlan seeded (FREE & PRO)');
+  // ── PRO_YEARLY — Rp 399.000 (hemat 17%) ──
+  await prisma.pricingPlan.upsert({
+    where: { name: 'PRO_YEARLY' },
+    update: {
+      features: PRO_FEATURES,
+      description: 'Pro setahun penuh — hemat 17%',
+      maxUploadPerMonth: 200, maxFileSizeMb: 50, aiRequestLimit: 999,
+      aiBriefingLimit: 99, aiWeeklyRoastLimit: 3, aiFoodLimit: 20,
+      aiDigitalizationLimit: 30, aiInsightLimit: 10, aiExamPredictionLimit: 10,
+      aiQuizGenLimit: 20, aiReceiptScanLimit: 20, aiSkripsweetLimit: 50, aiTodoParseLimit: 50,
+      price: 399000, durationDays: 365,
+    },
+    create: {
+      name: 'PRO_YEARLY',
+      description: 'Pro setahun penuh — hemat 17%',
+      maxUploadPerMonth: 200, maxFileSizeMb: 50, aiRequestLimit: 999,
+      aiBriefingLimit: 99, aiWeeklyRoastLimit: 3, aiFoodLimit: 20,
+      aiDigitalizationLimit: 30, aiInsightLimit: 10, aiExamPredictionLimit: 10,
+      aiQuizGenLimit: 20, aiReceiptScanLimit: 20, aiSkripsweetLimit: 50, aiTodoParseLimit: 50,
+      features: PRO_FEATURES, price: 399000, durationDays: 365,
+    },
+  });
+
+  console.log('✅  PricingPlan seeded (FREE, STARTER, STARTER_YEARLY, PRO, PRO_YEARLY)');
 
   // ─── 2. Akun SUPERADMIN Awal ─────────────────────────────────────────────
   await prisma.user.deleteMany({

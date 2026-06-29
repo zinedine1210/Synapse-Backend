@@ -164,7 +164,35 @@ export class PaymentService {
       }
     }
 
-    const grossAmount = pricingPlan.price;
+    // Apply promo code if provided
+    let grossAmount = pricingPlan.price;
+    if (dto.promoCode) {
+      const promoResult = await this.applyPromo(dto.promoCode, dto.plan);
+      grossAmount = promoResult.discountedPrice;
+      // Increment usage count
+      await this.prisma.promoDiscount.update({
+        where: { code: dto.promoCode.toUpperCase().trim() },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
+
+    if (grossAmount <= 0) {
+      // Free after promo — directly upgrade without payment
+      const durationDays = pricingPlan.durationDays || 30;
+      const planExpiresAt = durationDays > 0 ? new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000) : null;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { plan: dto.plan, planExpiresAt, dataRetentionDeadline: null },
+      });
+      await this.prisma.payment.create({
+        data: {
+          userId: user.id, orderId: `SYN-FREE-${uuidv4()}`, grossAmount: 0,
+          transactionStatus: 'settlement', plan: dto.plan,
+        },
+      });
+      this.authGuard.invalidateUser(user.id);
+      return { snapToken: null, redirectUrl: null, orderId: null, freeUpgrade: true };
+    }
 
     const orderId = `SYN-${uuidv4()}`;
 
@@ -257,6 +285,12 @@ export class PaymentService {
         data: { plan: payment.plan, planExpiresAt, dataRetentionDeadline: null },
       });
 
+      // Cancel all other pending payments for this user
+      await this.prisma.payment.updateMany({
+        where: { userId: payment.userId, transactionStatus: 'pending', id: { not: payment.id } },
+        data: { transactionStatus: 'cancel' },
+      });
+
       // Kirim notifikasi in-app
       await this.prisma.notification.create({
         data: {
@@ -323,16 +357,94 @@ export class PaymentService {
           });
         }
 
+        // Cancel all other pending payments for this user
+        await this.prisma.payment.updateMany({
+          where: { userId: payment.userId, transactionStatus: 'pending', id: { not: payment.id } },
+          data: { transactionStatus: 'cancel' },
+        });
+
         // Invalidate auth cache so next /auth/me returns fresh plan data
         this.authGuard.invalidateUser(payment.userId);
 
         this.logger.log(`User ${payment.userId} berhasil diverifikasi & diupgrade ke plan ${payment.plan}`);
       }
 
-      return { status: finalStatus };
+      return { status: finalStatus, plan: finalStatus === 'settlement' ? payment.plan : undefined };
     } catch (error) {
       this.logger.error(`Gagal verifikasi pembayaran untuk orderId ${orderId}:`, error);
       throw new BadRequestException('Gagal memverifikasi status pembayaran.');
     }
+  }
+
+  /** Validate and apply a promo code — returns discounted price */
+  async applyPromo(promoCode: string, planName: string) {
+    const promo = await this.prisma.promoDiscount.findUnique({
+      where: { code: promoCode.toUpperCase().trim() },
+    });
+
+    if (!promo) throw new BadRequestException('Kode promo tidak ditemukan.');
+    if (!promo.isActive) throw new BadRequestException('Kode promo sudah tidak aktif.');
+
+    const now = new Date();
+    if (now < promo.validFrom) throw new BadRequestException('Kode promo belum berlaku.');
+    if (now > promo.validUntil) throw new BadRequestException('Kode promo sudah expired.');
+    if (promo.maxUses > 0 && promo.usedCount >= promo.maxUses) {
+      throw new BadRequestException('Kode promo sudah mencapai batas penggunaan.');
+    }
+    if (promo.applicablePlans.length > 0 && !promo.applicablePlans.includes(planName)) {
+      throw new BadRequestException(`Kode promo tidak berlaku untuk plan ${planName}.`);
+    }
+
+    const plan = await this.prisma.pricingPlan.findUnique({ where: { name: planName } });
+    if (!plan) throw new BadRequestException('Plan tidak valid.');
+
+    const discountedPrice = this.calculateDiscount(plan.price, promo);
+
+    return {
+      originalPrice: plan.price,
+      discountType: promo.discountType,
+      discountPercent: promo.discountPercent,
+      discountAmount: promo.discountAmount,
+      discountedPrice,
+      promoCode: promo.code,
+      promoDescription: promo.description,
+    };
+  }
+
+  /** Get auto-apply promos valid for a given plan */
+  async getAutoPromos(planName: string) {
+    const now = new Date();
+    const promos = await this.prisma.promoDiscount.findMany({
+      where: {
+        autoApply: true,
+        isActive: true,
+        validFrom: { lte: now },
+        validUntil: { gte: now },
+      },
+    });
+
+    const plan = await this.prisma.pricingPlan.findUnique({ where: { name: planName } });
+    if (!plan) return [];
+
+    // Filter by applicable plans and usage limits
+    return promos
+      .filter(p => p.applicablePlans.length === 0 || p.applicablePlans.includes(planName))
+      .filter(p => p.maxUses === 0 || p.usedCount < p.maxUses)
+      .map(p => ({
+        code: p.code,
+        description: p.description,
+        discountType: p.discountType,
+        discountPercent: p.discountPercent,
+        discountAmount: p.discountAmount,
+        discountedPrice: this.calculateDiscount(plan.price, p),
+        originalPrice: plan.price,
+      }));
+  }
+
+  private calculateDiscount(price: number, promo: { discountType: string; discountPercent: number; discountAmount: number }): number {
+    if (promo.discountType === 'fixed') {
+      return Math.max(0, Math.round(price - promo.discountAmount));
+    }
+    return Math.max(0, Math.round(price * (1 - promo.discountPercent / 100)));
   }
 }

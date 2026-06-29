@@ -140,4 +140,39 @@ export class SuperadminController {
   getSystemStats() {
     return this.superadminService.getSystemStats();
   }
+
+  // ─── Promo Management ──────────────────────────────────────────────────────
+
+  /** GET /api/v1/superadmin/promos – List all promo codes */
+  @Get('promos')
+  getPromos() {
+    return this.superadminService.getPromos();
+  }
+
+  /** POST /api/v1/superadmin/promos – Create a promo code */
+  @Post('promos')
+  createPromo(@Body() dto: any) {
+    return this.superadminService.createPromo(dto);
+  }
+
+  /** PATCH /api/v1/superadmin/promos/:id – Update a promo code */
+  @Patch('promos/:id')
+  updatePromo(@Param('id', ParseUUIDPipe) id: string, @Body() dto: any) {
+    return this.superadminService.updatePromo(id, dto);
+  }
+
+  /** DELETE /api/v1/superadmin/promos/:id – Delete a promo code */
+  @Delete('promos/:id')
+  deletePromo(@Param('id', ParseUUIDPipe) id: string) {
+    return this.superadminService.deletePromo(id);
+  }
+
+  // ─── Revenue Analytics ─────────────────────────────────────────────────────
+
+  /** GET /api/v1/superadmin/revenue-analytics – Revenue & cost analytics */
+  @Get('revenue-analytics')
+  @CacheTTL(30)
+  getRevenueAnalytics() {
+    return this.superadminService.getRevenueAnalytics();
+  }
 }

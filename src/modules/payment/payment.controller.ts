@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Body,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -75,5 +76,26 @@ export class PaymentController {
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   verifyPayment(@GetUser() _user: User, @Body('orderId') orderId: string) {
     return this.paymentService.verifyPaymentStatus(orderId);
+  }
+
+  /**
+   * POST /api/v1/payments/apply-promo
+   * Validate promo code and return discounted price.
+   */
+  @Post('apply-promo')
+  @UseGuards(AuthGuard)
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  applyPromo(@Body('promoCode') promoCode: string, @Body('plan') plan: string) {
+    return this.paymentService.applyPromo(promoCode, plan);
+  }
+
+  /**
+   * GET /api/v1/payments/auto-promos?plan=PRO
+   * Returns auto-apply promos valid for the given plan.
+   */
+  @Get('auto-promos')
+  @UseGuards(AuthGuard)
+  getAutoPromos(@Query('plan') plan: string) {
+    return this.paymentService.getAutoPromos(plan);
   }
 }
