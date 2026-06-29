@@ -206,6 +206,12 @@ export class DuitTrackerController {
     return this.svc.markBillPaid(user.id, id);
   }
 
+  @Get('bills/:id/history')
+  @RequireFeature('duit_tracker_bills')
+  getBillHistory(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.getBillPaymentHistory(user.id, id);
+  }
+
   @Get('financial-overview')
   getFinancialOverview(@GetUser() user: User) {
     return this.svc.getFinancialOverview(user.id);

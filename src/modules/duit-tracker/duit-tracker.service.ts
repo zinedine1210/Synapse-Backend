@@ -781,7 +781,7 @@ Catatan:
 
   async createDebt(userId: string, dto: { description: string; amount: number; debtType: string; personName: string; dueDate?: string }) {
     try {
-      return await this.prisma.debt.create({
+      const debt = await this.prisma.debt.create({
         data: {
           userId,
           description: dto.description,
@@ -791,6 +791,23 @@ Catatan:
           dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
         },
       });
+
+      // Auto-create transaction: piutang (owed_to_me) = expense (uang keluar untuk dipinjamkan)
+      if (dto.debtType === 'owed_to_me') {
+        await this.prisma.transaction.create({
+          data: {
+            userId,
+            amount: dto.amount,
+            type: 'expense',
+            category: 'hutang',
+            label: `Pinjamkan uang: ${dto.description} (${dto.personName})`,
+            note: `Piutang ke ${dto.personName}`,
+            date: new Date(),
+          },
+        });
+      }
+
+      return debt;
     } catch (error: any) {
       this.logger.error(`createDebt failed: ${error?.message}`);
       throw new BadRequestException('Gagal menyimpan hutang. Pastikan data sudah benar.');
@@ -936,6 +953,26 @@ Catatan:
     return { bill: { ...bill, lastPaidAt: now, lastPaidFor: thisMonthStart }, transaction: tx };
   }
 
+  async getBillPaymentHistory(userId: string, billId: string) {
+    const bill = await this.prisma.recurringBill.findFirst({ where: { id: billId, userId } });
+    if (!bill) throw new NotFoundException('Tagihan tidak ditemukan');
+
+    // Find transactions that match this bill's payment pattern
+    const payments = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        label: { contains: bill.name },
+        category: bill.category || 'tagihan',
+        type: 'expense',
+      },
+      orderBy: { date: 'desc' },
+      take: 12, // Last 12 payments
+      select: { id: true, amount: true, date: true, createdAt: true },
+    });
+
+    return { bill: { id: bill.id, name: bill.name }, payments };
+  }
+
   // ── Financial Overview (for hero card) ──
 
   async getFinancialOverview(userId: string) {
@@ -1015,13 +1052,27 @@ Catatan:
   }
 
   async markWishlistPurchased(userId: string, id: string, linkedTransactionId?: string) {
-    await this.prisma.wishlistItem.findFirstOrThrow({ where: { id, userId } });
+    const item = await this.prisma.wishlistItem.findFirstOrThrow({ where: { id, userId } });
+
+    // Auto-create expense transaction for the purchase
+    const tx = await this.prisma.transaction.create({
+      data: {
+        userId,
+        amount: item.estimatedPrice,
+        type: 'expense',
+        category: item.category || 'belanja',
+        label: `Beli wishlist: ${item.name}`,
+        note: item.notes || `Pembelian dari wishlist`,
+        date: new Date(),
+      },
+    });
+
     return this.prisma.wishlistItem.update({
       where: { id },
       data: {
         isPurchased: true,
         purchasedAt: new Date(),
-        linkedTransactionId: linkedTransactionId || null,
+        linkedTransactionId: tx.id,
       },
     });
   }
