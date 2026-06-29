@@ -216,6 +216,35 @@ export class TaskService {
     if (!task) throw new NotFoundException('Tugas tidak ditemukan.');
     const member = await this.ensureMember(task.classId, userId);
     if (task.createdById !== userId && !this.hasPermission(member, 'TASK_EDIT')) throw new ForbiddenException('Tidak diizinkan.');
+
+    // Delete attached file from storage bucket if exists
+    if (task.descriptionImageUrl) {
+      try {
+        const url = new URL(task.descriptionImageUrl);
+        const pathMatch = url.pathname.match(/\/storage\/v1\/object\/public\/materials\/(.+)/);
+        if (pathMatch) {
+          await this.supabase.storage.from('materials').remove([pathMatch[1]]);
+        }
+      } catch (e) {
+        this.logger.warn('Failed to delete task image from bucket:', e);
+      }
+    }
+
+    // Also delete any images in HTML description (from RTE uploads)
+    if (task.description) {
+      const imgUrls = task.description.match(/src="([^"]*\/storage\/v1\/object\/public\/materials\/[^"]*)"/g);
+      if (imgUrls?.length) {
+        const paths = imgUrls.map(m => {
+          const match = m.match(/\/storage\/v1\/object\/public\/materials\/([^"]+)/);
+          return match ? match[1] : null;
+        }).filter(Boolean) as string[];
+        if (paths.length) {
+          try { await this.supabase.storage.from('materials').remove(paths); }
+          catch (e) { this.logger.warn('Failed to delete RTE images from bucket:', e); }
+        }
+      }
+    }
+
     await this.prisma.task.delete({ where: { id: taskId } });
     return { message: 'Tugas dihapus.' };
   }

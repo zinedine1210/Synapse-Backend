@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, BadRequestException,
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 import { NotificationService } from '../notification/notification.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -242,6 +243,7 @@ export class DuitTrackerService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly aiJob: AiJobService,
+    private readonly aiUsage: AiUsageService,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -668,6 +670,7 @@ Format response (JSON only):
   }
 
   async scanReceipt(userId: string, imageBase64: string, mimeType: string) {
+    await this.aiUsage.checkAndRecord(userId, 'receipt_scan');
     return this.aiJob.runAsync(userId, 'scan_receipt', async () => {
     const prompt = `Kamu adalah OCR parser untuk struk belanja Indonesia.
 

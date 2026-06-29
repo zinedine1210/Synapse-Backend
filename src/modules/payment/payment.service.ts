@@ -26,6 +26,34 @@ export class PaymentService {
     this.core = new MidtransClient.CoreApi(config);
   }
 
+  /** Returns all available pricing plans for the billing page */
+  async getAvailablePlans() {
+    return this.prisma.pricingPlan.findMany({
+      orderBy: { price: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        maxUploadPerMonth: true,
+        maxFileSizeMb: true,
+        aiRequestLimit: true,
+        aiBriefingLimit: true,
+        aiWeeklyRoastLimit: true,
+        aiFoodLimit: true,
+        aiDigitalizationLimit: true,
+        aiInsightLimit: true,
+        aiExamPredictionLimit: true,
+        aiQuizGenLimit: true,
+        aiReceiptScanLimit: true,
+        aiSkripsweetLimit: true,
+        aiTodoParseLimit: true,
+        features: true,
+        price: true,
+        durationDays: true,
+      },
+    });
+  }
+
   /** Membuat transaksi Midtrans dan mendapatkan snapToken */
   async createSnapToken(user: User, dto: CreatePaymentDto) {
     const pricingPlan = await this.prisma.pricingPlan.findUnique({

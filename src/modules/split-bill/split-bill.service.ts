@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 import { SplitBillGateway } from './split-bill.gateway';
 
 @Injectable()
@@ -10,10 +11,12 @@ export class SplitBillService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly aiJob: AiJobService,
+    private readonly aiUsage: AiUsageService,
     private readonly splitBillGateway: SplitBillGateway,
   ) {}
 
   async scanReceipt(userId: string, imageBase64: string, mimeType: string) {
+    await this.aiUsage.checkAndRecord(userId, 'receipt_scan');
     return this.aiJob.runAsync(userId, 'split_bill_scan', async () => {
     const prompt = `Kamu adalah OCR parser AHLI untuk struk/receipt belanja Indonesia.
 

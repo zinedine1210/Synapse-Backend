@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 import { CreateTodoDto, UpdateTodoDto } from './dto/todo.dto';
 import { ReorderTodosDto } from './dto/reorder-todo.dto';
 import { CreateSubtaskDto, UpdateSubtaskDto } from './dto/subtask.dto';
@@ -13,6 +14,7 @@ export class TodoService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly aiJob: AiJobService,
+    private readonly aiUsage: AiUsageService,
   ) {}
 
   /**
@@ -240,6 +242,7 @@ export class TodoService {
   }
 
   async parseNaturalInput(userId: string, text: string) {
+    await this.aiUsage.checkAndRecord(userId, 'todo_parse');
     return this.aiJob.run(userId, 'parse_todo', async () => {
     const prompt = `Kamu adalah asisten to-do list. Parse input berikut menjadi task.
 Input: "${text}"

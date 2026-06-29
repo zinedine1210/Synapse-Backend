@@ -36,6 +36,41 @@ export class CreatePricingPlanDto {
   @IsOptional()
   aiFoodLimit?: number;
 
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiDigitalizationLimit?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiInsightLimit?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiExamPredictionLimit?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiQuizGenLimit?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiReceiptScanLimit?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiSkripsweetLimit?: number;
+
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  aiTodoParseLimit?: number;
+
   @IsArray()
   @IsString({ each: true })
   features: string[];

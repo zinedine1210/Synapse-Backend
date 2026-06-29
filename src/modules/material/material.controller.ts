@@ -15,11 +15,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MaterialService } from './material.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
+import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 
 @Controller('materials')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, FileSizeGuard)
 export class MaterialController {
   constructor(private readonly materialService: MaterialService) {}
 

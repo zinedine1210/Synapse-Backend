@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 import { CreatePredictionDto } from './dto/create-prediction.dto';
 import { GeneratePredictionDto } from './dto/generate-prediction.dto';
 
@@ -12,6 +13,7 @@ export class ExamPredictionService {
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
     private readonly aiJob: AiJobService,
+    private readonly aiUsage: AiUsageService,
   ) {}
 
   private hasPermission(member: any, perm: string): boolean {
@@ -91,6 +93,7 @@ export class ExamPredictionService {
 
   /** AI Generate prediksi ujian dari materi pertemuan */
   async generatePrediction(classId: string, userId: string, dto: GeneratePredictionDto) {
+    await this.aiUsage.checkAndRecord(userId, 'exam_prediction');
     const member = await this.prisma.classMember.findUnique({
       where: { classId_userId: { classId, userId } },
       include: { classRole: true },
@@ -162,6 +165,7 @@ export class ExamPredictionService {
     userId: string,
     dto: { title: string; description?: string; base64: string; mimeType: string },
   ) {
+    await this.aiUsage.checkAndRecord(userId, 'exam_prediction');
     const member = await this.prisma.classMember.findUnique({
       where: { classId_userId: { classId, userId } },
       include: { classRole: true },

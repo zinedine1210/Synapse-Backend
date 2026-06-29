@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 
 @Injectable()
 export class InsightService {
@@ -9,6 +10,7 @@ export class InsightService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly aiJob: AiJobService,
+    private readonly aiUsage: AiUsageService,
   ) {}
 
   /**
@@ -167,6 +169,7 @@ export class InsightService {
    * Generate AI-powered insight text from weekly data
    */
   async getAiInsight(userId: string) {
+    await this.aiUsage.checkAndRecord(userId, 'ai_insight');
     return this.aiJob.runAsync(userId, 'ai_insight', async () => {
     const summary = await this.getWeeklySummary(userId, 'month');
 

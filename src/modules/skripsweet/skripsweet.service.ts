@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 import {
   CreateThesisDto, UpdateThesisDto, SetFormatTemplateDto, ExplainFormatDto,
   CreateChapterDto, UpdateChapterDto, AddJournalDto, SearchJournalDto,
@@ -15,6 +16,7 @@ export class SkripsweetService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly aiUsage: AiUsageService,
   ) {}
 
   // ─── Helper: ownership check ──────────────────────────────────────────
@@ -130,6 +132,7 @@ export class SkripsweetService {
    * AI parses it into structured format rules.
    */
   async explainFormat(userId: string, thesisId: string, dto: ExplainFormatDto) {
+    await this.aiUsage.checkAndRecord(userId, 'skripsweet');
     await this.getThesisOrFail(userId, thesisId);
 
     // Strip HTML tags from RichTextEditor output
@@ -276,6 +279,7 @@ Balas dalam JSON SAJA (tanpa markdown code block), dengan format:
   }
 
   async getAiChapterFeedback(userId: string, thesisId: string, chapterId: string) {
+    await this.aiUsage.checkAndRecord(userId, 'skripsweet');
     const thesis = await this.getThesisOrFail(userId, thesisId);
     const chapter = thesis.chapters.find(c => c.id === chapterId);
     if (!chapter) throw new NotFoundException('Bab tidak ditemukan');
@@ -347,6 +351,7 @@ Berikan feedback dalam format markdown:
   }
 
   async searchJournals(userId: string, thesisId: string, dto: SearchJournalDto) {
+    await this.aiUsage.checkAndRecord(userId, 'skripsweet');
     await this.getThesisOrFail(userId, thesisId);
     const limit = dto.limit || 10;
 
@@ -396,6 +401,7 @@ Balas JSON saja tanpa markdown code block.`;
   }
 
   async getRelevanceMatrix(userId: string, thesisId: string) {
+    await this.aiUsage.checkAndRecord(userId, 'skripsweet');
     const thesis = await this.getThesisOrFail(userId, thesisId);
     if (thesis.journals.length === 0) {
       return { matrix: [], message: 'Belum ada jurnal yang ditambahkan.' };
@@ -472,6 +478,7 @@ Balas JSON saja tanpa markdown code block.`;
   // ═══════════════════════════════════════════════════════════════════════
 
   async chat(userId: string, thesisId: string, dto: ThesisChatDto) {
+    await this.aiUsage.checkAndRecord(userId, 'skripsweet');
     const thesis = await this.getThesisOrFail(userId, thesisId);
 
     // Build context from thesis data
@@ -566,6 +573,7 @@ Jawab dengan bahasa Indonesia yang natural dan akademis. Jika ditanya soal forma
   // ═══════════════════════════════════════════════════════════════════════
 
   async aiWriteAssist(userId: string, thesisId: string, chapterId: string, dto: import('./dto/skripsweet.dto').AiWriteAssistDto) {
+    await this.aiUsage.checkAndRecord(userId, 'skripsweet');
     const thesis = await this.getThesisOrFail(userId, thesisId);
     const chapter = thesis.chapters.find(c => c.id === chapterId);
     if (!chapter) throw new NotFoundException('Chapter not found');
@@ -639,6 +647,7 @@ ATURAN PENTING:
   // ═══════════════════════════════════════════════════════════════════════
 
   async generateBibliography(userId: string, thesisId: string, style?: string) {
+    await this.aiUsage.checkAndRecord(userId, 'skripsweet');
     const thesis = await this.getThesisOrFail(userId, thesisId);
     if (thesis.journals.length === 0) {
       return { bibliography: [], message: 'Belum ada jurnal. Tambahkan jurnal dulu ya!' };

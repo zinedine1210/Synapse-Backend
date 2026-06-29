@@ -15,12 +15,13 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ProfileService } from './profile.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
+import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Controller('user/profile')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, FileSizeGuard)
 export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
 

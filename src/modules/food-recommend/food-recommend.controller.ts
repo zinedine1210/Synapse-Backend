@@ -2,12 +2,13 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Query } f
 import { FoodRecommendService } from './food-recommend.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
+import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 
 @Controller('food')
-@UseGuards(AuthGuard, FeatureGuard)
+@UseGuards(AuthGuard, FeatureGuard, FileSizeGuard)
 @RequireFeature('food_recommend')
 export class FoodRecommendController {
   constructor(private readonly svc: FoodRecommendService) {}

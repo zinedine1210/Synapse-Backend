@@ -17,11 +17,12 @@ import { ForumService } from './forum.service';
 import { ForumGateway } from './forum.gateway';
 import { CreatePostDto, CreateReplyDto, CreateDiscussionDto, UpdateDiscussionDto } from './dto/forum.dto';
 import { AuthGuard } from '../../common/guards/auth.guard';
+import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 
 @Controller('forum')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, FileSizeGuard)
 export class ForumController {
   constructor(
     private readonly forumService: ForumService,

@@ -5,12 +5,13 @@ import {
 import { SplitBillService } from './split-bill.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
+import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 
 @Controller('split-bill')
-@UseGuards(AuthGuard, FeatureGuard)
+@UseGuards(AuthGuard, FeatureGuard, FileSizeGuard)
 @RequireFeature('split_bill')
 export class SplitBillController {
   constructor(private readonly svc: SplitBillService) {}

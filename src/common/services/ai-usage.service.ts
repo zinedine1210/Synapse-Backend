@@ -1,18 +1,35 @@
 import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 
-export type AiFeature = 'briefing' | 'weekly_roast' | 'food_recommend';
+export type AiFeature =
+  | 'briefing'
+  | 'weekly_roast'
+  | 'food_recommend'
+  | 'ai_digitalization'
+  | 'ai_insight'
+  | 'exam_prediction'
+  | 'quiz_generate'
+  | 'receipt_scan'
+  | 'skripsweet'
+  | 'todo_parse';
 
 interface LimitConfig {
-  field: keyof Pick<any, 'aiBriefingLimit' | 'aiWeeklyRoastLimit' | 'aiFoodLimit'>;
+  field: string;
   period: 'day' | 'week';
   label: string;
 }
 
 const FEATURE_CONFIG: Record<AiFeature, LimitConfig> = {
-  briefing: { field: 'aiBriefingLimit', period: 'day', label: 'AI Briefing' },
-  weekly_roast: { field: 'aiWeeklyRoastLimit', period: 'week', label: 'Weekly Roast' },
-  food_recommend: { field: 'aiFoodLimit', period: 'day', label: 'Rekomendasi Makanan' },
+  briefing:           { field: 'aiBriefingLimit',        period: 'day',  label: 'AI Briefing' },
+  weekly_roast:       { field: 'aiWeeklyRoastLimit',     period: 'week', label: 'Weekly Roast' },
+  food_recommend:     { field: 'aiFoodLimit',            period: 'day',  label: 'Rekomendasi Makanan' },
+  ai_digitalization:  { field: 'aiDigitalizationLimit',  period: 'day',  label: 'AI Digitalisasi' },
+  ai_insight:         { field: 'aiInsightLimit',         period: 'day',  label: 'AI Insight' },
+  exam_prediction:    { field: 'aiExamPredictionLimit',  period: 'day',  label: 'Prediksi Ujian AI' },
+  quiz_generate:      { field: 'aiQuizGenLimit',         period: 'day',  label: 'Generate Kuis AI' },
+  receipt_scan:       { field: 'aiReceiptScanLimit',     period: 'day',  label: 'Scan Struk AI' },
+  skripsweet:         { field: 'aiSkripsweetLimit',      period: 'day',  label: 'Skripsweet AI' },
+  todo_parse:         { field: 'aiTodoParseLimit',       period: 'day',  label: 'Parse Todo AI' },
 };
 
 @Injectable()

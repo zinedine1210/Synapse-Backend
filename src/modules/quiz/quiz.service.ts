@@ -2,6 +2,7 @@ import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiJobService } from '../ai-job/ai-job.service';
+import { AiUsageService } from '../../common/services/ai-usage.service';
 import { NotificationService } from '../notification/notification.service';
 import { GenerateQuizDto } from './dto/generate-quiz.dto';
 import { AttemptQuizDto } from './dto/attempt-quiz.dto';
@@ -15,10 +16,12 @@ export class QuizService {
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
     private readonly aiJob: AiJobService,
+    private readonly aiUsage: AiUsageService,
     private readonly notificationService: NotificationService,
   ) {}
 
   async generateQuiz(user: User, dto: GenerateQuizDto) {
+    await this.aiUsage.checkAndRecord(user.id, 'quiz_generate');
     // Verify user is a member of the class that owns these sessions
     const sessions = await this.prisma.session.findMany({
       where: { id: { in: dto.sessionIds } },

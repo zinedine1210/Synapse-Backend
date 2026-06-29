@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Body,
   UseGuards,
@@ -16,6 +17,15 @@ import { User } from '@prisma/client';
 @Controller('payments')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
+
+  /**
+   * GET /api/v1/payments/plans
+   * Public — returns all available plans for the billing page.
+   */
+  @Get('plans')
+  getAvailablePlans() {
+    return this.paymentService.getAvailablePlans();
+  }
 
   /**
    * POST /api/v1/payments/create-snap-token

@@ -5,6 +5,7 @@ import {
 import { DuitTrackerService } from './duit-tracker.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
+import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
@@ -15,7 +16,7 @@ import { CreateTreeDto, TreeTransactionDto } from './dto/create-tree.dto';
 import { UpdateTreeDto } from './dto/update-tree.dto';
 
 @Controller('duit-tracker')
-@UseGuards(AuthGuard, FeatureGuard)
+@UseGuards(AuthGuard, FeatureGuard, FileSizeGuard)
 @RequireFeature('duit_tracker')
 export class DuitTrackerController {
   constructor(private readonly svc: DuitTrackerService) {}

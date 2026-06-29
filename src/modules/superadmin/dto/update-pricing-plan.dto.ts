@@ -40,6 +40,41 @@ export class UpdatePricingPlanDto {
   aiFoodLimit?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiDigitalizationLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiInsightLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiExamPredictionLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiQuizGenLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiReceiptScanLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiSkripsweetLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  aiTodoParseLimit?: number;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   features?: string[];
