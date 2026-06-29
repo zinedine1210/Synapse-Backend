@@ -298,6 +298,8 @@ export class BriefingService {
       : '';
 
     // Build AI prompt with structured section markers for frontend parsing
+    const currentHour = new Date().getHours();
+    const timeOfDay = currentHour >= 5 && currentHour < 11 ? 'pagi' : currentHour >= 11 && currentHour < 15 ? 'siang' : currentHour >= 15 && currentHour < 18 ? 'sore' : 'malam';
     const prompt = `Kamu adalah asisten pribadi cerdas untuk anak muda. Tugasmu bukan sekedar membacakan data, tapi memberikan INSIGHT dan ANALISIS yang benar-benar membantu user mengambil keputusan hari ini.
 
 PRINSIP:
@@ -306,7 +308,7 @@ PRINSIP:
 - Gunakan catatan/notes dari transaksi untuk memahami KONTEKS pengeluaran sebelum berkomentar
 - Prioritaskan yang paling URGENT dan IMPACTFUL, bukan sebutkan semua data
 
-Data hari ini (${today.toLocaleDateString('id-ID')}, ${todayDayName}):
+Data hari ini (${today.toLocaleDateString('id-ID')}, ${todayDayName}, sekarang ${timeOfDay} jam ${currentHour}:00):
 
 📋 TUGAS KELAS (deadline minggu ini):
 ${tasksText}
@@ -338,7 +340,7 @@ INSTRUKSI FORMAT OUTPUT:
 Buat briefing menggunakan section markers berikut agar bisa di-parse oleh frontend. Setiap section HARUS diawali dengan marker yang tepat:
 
 <!-- SECTION:greeting -->
-(Sapa user sesuai waktu: pagi/siang/sore. 1-2 kalimat yang PERSONAL dan relevan — bukan sekedar "selamat pagi!" tapi hubungkan dengan konteks hari ini, misal "Pagi! Hari ini ada deadline tugas X, jadi pastiin fokus ya.")
+(Sapa user sesuai waktu yang tertera di atas (${timeOfDay}). Gunakan sapaan yang sesuai: pagi→"Pagi!", siang→"Siang!", sore→"Sore!", malam→"Malam!". 1-2 kalimat yang PERSONAL dan relevan — bukan sekedar "selamat pagi!" tapi hubungkan dengan konteks hari ini, misal "Pagi! Hari ini ada deadline tugas X, jadi pastiin fokus ya.")
 
 <!-- SECTION:tugas -->
 (Rangkum tugas kelas yang mendekati deadline. Sebutkan JUDUL SPESIFIK dan TANGGAL. Berikan strategi singkat: mana yang harus dikerjakan duluan dan kenapa. Jika tidak ada tugas, skip section ini.)

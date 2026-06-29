@@ -400,11 +400,17 @@ export class NotificationSchedulerService {
       });
 
       for (const user of users) {
+        // Check notification preference
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId: user.id },
+        });
+        if (pref && !pref.pushEnabled) continue;
+
         // Meal time reminder
         await this.notificationService.createNotification(
           user.id,
           '🍽️ Sudah makan siang?',
-          'Jangan lupa makan! Cek rekomendasi makan dari AI di menu Makan.',
+          'Jangan lupa makan siang! Cek rekomendasi makan dari AI di menu Makan.',
           { category: 'lifestyle', actionUrl: '/makan' },
         );
 
@@ -444,10 +450,16 @@ export class NotificationSchedulerService {
       });
 
       for (const user of users) {
+        // Check notification preference
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId: user.id },
+        });
+        if (pref && !pref.pushEnabled) continue;
+
         await this.notificationService.createNotification(
           user.id,
           '🍜 Waktunya makan malam!',
-          'Sudah sore nih. Bingung makan apa? Minta rekomendasi dari AI!',
+          'Sudah malam nih. Bingung makan apa? Minta rekomendasi dari AI!',
           { category: 'lifestyle', actionUrl: '/makan' },
         );
       }
