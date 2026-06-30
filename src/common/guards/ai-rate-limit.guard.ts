@@ -46,7 +46,7 @@ export class AiRateLimitGuard implements CanActivate {
 
     // Ambil limit dari PricingPlan di database
     const limit = user.pricingPlan?.aiRequestLimit ?? this.FALLBACK_LIMIT;
-    const planName = user.pricingPlan?.name ?? 'FREE';
+    const planName = user.pricingPlan?.name ?? 'Unknown';
 
     if (currentCount >= limit) {
       this.logger.warn(

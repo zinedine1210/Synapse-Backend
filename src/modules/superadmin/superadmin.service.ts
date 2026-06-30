@@ -32,7 +32,7 @@ export class SuperadminService {
       totalRevenue,
     ] = await Promise.all([
       this.prisma.user.count(),
-      this.prisma.user.count({ where: { plan: 'PRO' } }),
+      this.prisma.user.count({ where: { pricingPlan: { price: { gt: 0 } } } }),
       this.prisma.class.count(),
       this.prisma.material.count(),
       this.prisma.material.count({ where: { status: 'PROCESSING' } }),
@@ -107,7 +107,14 @@ export class SuperadminService {
   async deletePricingPlan(id: string) {
     const plan = await this.prisma.pricingPlan.findUnique({ where: { id } });
     if (!plan) throw new NotFoundException('Plan tidak ditemukan.');
-    if (plan.name === 'FREE') throw new BadRequestException('Plan FREE tidak bisa dihapus.');
+
+    // Prevent deleting the lowest-price (free-tier) plan
+    if (plan.price === 0) {
+      const freePlansCount = await this.prisma.pricingPlan.count({ where: { price: 0 } });
+      if (freePlansCount <= 1) {
+        throw new BadRequestException('Tidak bisa menghapus satu-satunya plan gratis. Harus ada minimal 1 plan dengan harga 0.');
+      }
+    }
 
     // Check if any users are on this plan
     const usersOnPlan = await this.prisma.user.count({ where: { plan: plan.name } });
@@ -587,7 +594,7 @@ export class SuperadminService {
 
     // Total users
     const totalUsers = await this.prisma.user.count();
-    const paidUsers = await this.prisma.user.count({ where: { plan: { not: 'FREE' } } });
+    const paidUsers = await this.prisma.user.count({ where: { pricingPlan: { price: { gt: 0 } } } });
 
     // Monthly recurring revenue (MRR) estimate
     const planPrices = await this.prisma.pricingPlan.findMany({

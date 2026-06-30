@@ -7,7 +7,7 @@ const GRACE_PERIOD_DAYS = 30;
 
 /**
  * Cron service that:
- * 1. Downgrades expired paid plans back to FREE (daily at 00:05)
+ * 1. Downgrades expired paid plans back to the lowest-price plan (daily at 00:05)
  * 2. Purges premium feature data after 30-day grace period (daily at 01:00)
  */
 @Injectable()
@@ -19,16 +19,29 @@ export class PlanExpiryService {
     private readonly authGuard: AuthGuard,
   ) {}
 
+  /** Get the free/lowest-price plan name dynamically */
+  private async getFreePlanName(): Promise<string> {
+    const lowestPlan = await this.prisma.pricingPlan.findFirst({
+      where: { price: 0 },
+      orderBy: { createdAt: 'asc' },
+      select: { name: true },
+    });
+    return lowestPlan?.name ?? (await this.prisma.pricingPlan.findFirst({
+      orderBy: { price: 'asc' },
+      select: { name: true },
+    }))?.name ?? 'NEWBIE';
+  }
+
   @Cron('5 0 * * *') // Every day at 00:05
   async handleExpiredPlans() {
     this.logger.log('Checking for expired plans...');
 
     const now = new Date();
+    const freePlanName = await this.getFreePlanName();
 
-    // Find all users with a non-FREE plan that has expired
+    // Find all users whose plan has expired (planExpiresAt <= now)
     const expiredUsers = await this.prisma.user.findMany({
       where: {
-        plan: { not: 'FREE' },
         planExpiresAt: { not: null, lte: now },
       },
       select: { id: true, plan: true, fullName: true, planExpiresAt: true },
@@ -48,7 +61,7 @@ export class PlanExpiryService {
 
         await this.prisma.user.update({
           where: { id: user.id },
-          data: { plan: 'FREE', planExpiresAt: null, dataRetentionDeadline },
+          data: { plan: freePlanName, planExpiresAt: null, dataRetentionDeadline },
         });
 
         // Notify the user
@@ -63,7 +76,7 @@ export class PlanExpiryService {
         // Invalidate auth cache
         this.authGuard.invalidateUser(user.id);
 
-        this.logger.log(`User ${user.id} (${user.fullName}) downgraded from ${user.plan} to FREE. Data retention until ${dataRetentionDeadline.toISOString()}`);
+        this.logger.log(`User ${user.id} (${user.fullName}) downgraded from ${user.plan} to ${freePlanName}. Data retention until ${dataRetentionDeadline.toISOString()}`);
       } catch (error) {
         this.logger.error(`Failed to downgrade user ${user.id}:`, error);
       }
@@ -78,10 +91,9 @@ export class PlanExpiryService {
 
     const now = new Date();
 
-    // Find FREE users whose grace period has ended
+    // Find users whose grace period has ended (dataRetentionDeadline passed)
     const usersToePurge = await this.prisma.user.findMany({
       where: {
-        plan: 'FREE',
         dataRetentionDeadline: { not: null, lte: now },
       },
       select: { id: true, fullName: true, dataRetentionDeadline: true },

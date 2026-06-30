@@ -122,9 +122,9 @@ export class PaymentService {
     }
 
     // Prevent downgrade — user can't buy a plan cheaper than their current one
-    const currentPlan = await this.prisma.pricingPlan.findUnique({
-      where: { name: (user as any).plan || 'FREE' },
-    });
+    const currentPlan = (user as any).plan
+      ? await this.prisma.pricingPlan.findUnique({ where: { name: (user as any).plan } })
+      : null;
     if (currentPlan && pricingPlan.price <= currentPlan.price && pricingPlan.price > 0) {
       throw new BadRequestException('Tidak bisa membeli paket yang lebih rendah atau sama dari paket aktif.');
     }
