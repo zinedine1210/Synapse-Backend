@@ -248,22 +248,27 @@ export class MaterialService {
 
       // Notify uploader that digitization is done
       try {
-        await this.notificationService.createNotification(
-          uploaderId,
-          'Digitalisasi Selesai',
-          `Materi "${fileName}" berhasil didigitalisasi oleh AI.`,
-        );
         // Notify other class members about new material
         const session = await this.prisma.session.findUnique({
           where: { id: sessionId },
           select: { classId: true, title: true },
         });
-        if (session) {
+        const classId = session?.classId;
+
+        await this.notificationService.createNotification(
+          uploaderId,
+          'Digitalisasi Selesai',
+          `Materi "${fileName}" berhasil didigitalisasi oleh AI.`,
+          { category: 'kelas', actionUrl: classId ? `/class/${classId}` : '/dashboard' },
+        );
+
+        if (session && classId) {
           await this.notificationService.notifyClassMembers(
-            session.classId,
+            classId,
             uploaderId,
             'Materi Baru',
             `Materi "${fileName}" telah diupload di ${session.title}.`,
+            { category: 'kelas', actionUrl: `/class/${classId}` },
           );
         }
       } catch (notifErr) {

@@ -366,6 +366,15 @@ export class NotificationSchedulerService {
         const timeStr = isEvent && todo.startTime ? ` jam ${todo.startTime}` : todo.dueTime ? ` jam ${todo.dueTime}` : '';
         const locStr = isEvent && todo.location ? ` di ${todo.location}` : '';
 
+        // Check todoReminder preference
+        const todoPref = await this.prisma.notificationPreference.findUnique({
+          where: { userId: todo.userId },
+        });
+        if (todoPref && !todoPref.todoReminder) {
+          await this.prisma.todoReminder.update({ where: { id: reminder.id }, data: { sent: true } });
+          continue;
+        }
+
         await this.notificationService.createNotification(
           todo.userId,
           isEvent ? '⏰ Pengingat Jadwal' : '⏰ Pengingat Todo',
@@ -407,6 +416,11 @@ export class NotificationSchedulerService {
       });
 
       for (const debt of dueToday) {
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId: debt.userId },
+        });
+        if (pref && !pref.debtReminder) continue;
+
         const label = debt.debtType === 'owed_by_me'
           ? `Hutang ke ${debt.personName}`
           : `Piutang dari ${debt.personName}`;
@@ -425,6 +439,11 @@ export class NotificationSchedulerService {
       });
 
       for (const debt of dueSoon) {
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId: debt.userId },
+        });
+        if (pref && !pref.debtReminder) continue;
+
         const label = debt.debtType === 'owed_by_me'
           ? `Hutang ke ${debt.personName}`
           : `Piutang dari ${debt.personName}`;
@@ -573,17 +592,19 @@ export class NotificationSchedulerService {
         const pref = await this.prisma.notificationPreference.findUnique({
           where: { userId: user.id },
         });
-        if (pref && !pref.pushEnabled) continue;
 
         // Meal time reminder
-        await this.notificationService.createNotification(
-          user.id,
-          '🍽️ Sudah makan siang?',
-          'Jangan lupa makan siang! Cek rekomendasi makan dari AI di menu Makan.',
-          { category: 'lifestyle', actionUrl: '/makan' },
-        );
+        if (!pref || pref.mealReminder) {
+          await this.notificationService.createNotification(
+            user.id,
+            '🍽️ Sudah makan siang?',
+            'Jangan lupa makan siang! Cek rekomendasi makan dari AI di menu Makan.',
+            { category: 'lifestyle', actionUrl: '/makan' },
+          );
+        }
 
         // Streak motivation (only on notable milestones)
+        if (pref && !pref.streakReminder) continue;
         const gamification = await this.prisma.userGamification.findUnique({
           where: { userId: user.id },
         });
@@ -623,7 +644,7 @@ export class NotificationSchedulerService {
         const pref = await this.prisma.notificationPreference.findUnique({
           where: { userId: user.id },
         });
-        if (pref && !pref.pushEnabled) continue;
+        if (pref && !pref.mealReminder) continue;
 
         await this.notificationService.createNotification(
           user.id,
@@ -746,6 +767,12 @@ export class NotificationSchedulerService {
 
         const unpaidNames = bill.participants.map(p => p.name).slice(0, 3).join(', ');
         const extra = bill.participants.length > 3 ? ` dan ${bill.participants.length - 3} lainnya` : '';
+
+        // Check splitBillReminder preference
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId: bill.userId },
+        });
+        if (pref && !pref.splitBillReminder) continue;
 
         // Don't spam — max 1 reminder per bill per day
         const today = new Date();
@@ -1038,6 +1065,12 @@ export class NotificationSchedulerService {
         // Skip if already paid this month
         if (bill.lastPaidAt && new Date(bill.lastPaidAt) >= monthStart) continue;
 
+        // Check billReminder preference
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId: bill.userId },
+        });
+        if (pref && !pref.billReminder) continue;
+
         const isToday = bill.dueDay === todayDay;
         const emoji = isToday ? '⚠️' : '📅';
         const timeLabel = isToday ? 'hari ini' : 'besok';
@@ -1232,6 +1265,12 @@ export class NotificationSchedulerService {
 
       for (const [userId, classes] of Object.entries(scheduleByUser)) {
         if (classes.length === 0) continue;
+
+        // Check scheduleReminder preference
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId },
+        });
+        if (pref && !pref.scheduleReminder) continue;
 
         const preview = classes.slice(0, 3).map(c => `${c.name} (${c.time})`).join(', ');
         await this.notificationService.createNotification(

@@ -100,6 +100,8 @@ model User {
   foodFavorites          FoodFavorite[]
   foodHistory            FoodRecommendationHistory[]
   foodRatings            FoodRating[]
+  mealPlans              MealPlan[]
+  mealCatalog            UserMealCatalog[]
   profile                UserProfile?
   recurringBills         RecurringBill[]
   thesisProjects         ThesisProject[]
@@ -972,6 +974,13 @@ model NotificationPreference {
   forumReply       Boolean @default(true)
   qnaAnswer        Boolean @default(true)
   achievementAlert Boolean @default(true)
+  mealReminder     Boolean @default(true)
+  todoReminder     Boolean @default(true)
+  debtReminder     Boolean @default(true)
+  splitBillReminder Boolean @default(true)
+  billReminder     Boolean @default(true)
+  scheduleReminder Boolean @default(true)
+  materialNotif    Boolean @default(true)
   quietHoursStart  String?
   quietHoursEnd    String?
   pushEnabled      Boolean @default(true)
@@ -1236,6 +1245,61 @@ model FoodRating {
   history FoodRecommendationHistory @relation(fields: [historyId], references: [id], onDelete: Cascade)
 
   @@unique([userId, historyId])
+  @@index([userId])
+}
+
+// ==============================
+// Meal Plan Tracking
+// ==============================
+
+model MealPlan {
+  id          String   @id @default(uuid())
+  userId      String
+  weekStart   DateTime // Start of the week (Monday)
+  planData    String   @db.Text // JSON: full MealPlanResult
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries MealPlanEntry[]
+
+  @@index([userId, weekStart])
+  @@unique([userId, weekStart])
+}
+
+model MealPlanEntry {
+  id         String    @id @default(uuid())
+  planId     String
+  day        Int       // 1-7
+  mealType   String    // breakfast, lunch, dinner
+  completed  Boolean   @default(false)
+  completedAt DateTime?
+  skipped    Boolean   @default(false)
+  actualCost Float?    // Real cost if user provides it
+
+  plan MealPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+  @@unique([planId, day, mealType])
+}
+
+// User's known meals with real pricing
+model UserMealCatalog {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String   // "Nasi Padang"
+  mealType  String   // breakfast, lunch, dinner, snack
+  price     Float    // Real price user pays
+  calories  Int?
+  protein   Int?
+  tags      String[] // ["berat", "enak", "mahal"]
+  source    String?  // "kantin kantor", "warteg depan kos"
+  frequency Int      @default(1) // How often user eats this per week
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 

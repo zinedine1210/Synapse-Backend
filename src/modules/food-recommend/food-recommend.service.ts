@@ -434,28 +434,43 @@ Response dalam JSON:
       const dailyBudget = pref.avgMealBudget || (remaining ? Math.round(remaining / days) : 25000);
       const habitsContext = this.buildHabitsContext(pref);
 
-      const prompt = `Kamu adalah perencana meal plan & ahli nutrisi untuk anak muda Indonesia (mahasiswa/anak kos).
+      // Fetch user's meal catalog for realistic pricing & known meals
+      const catalog = await this.prisma.userMealCatalog.findMany({
+        where: { userId },
+        orderBy: { frequency: 'desc' },
+      });
 
-Buatkan meal plan ${days} hari (sarapan, makan siang, & makan malam). Setiap hari ada 3 meal.
+      const catalogContext = catalog.length > 0
+        ? `\nMAKANAN YANG USER BIASA MAKAN (gunakan ini sebagai basis utama meal plan!):\n${catalog.map(m => `- ${m.name} (${m.mealType}) — Rp ${m.price.toLocaleString('id-ID')}${m.calories ? `, ${m.calories} kkal` : ''}${m.source ? `, beli di: ${m.source}` : ''}${m.tags.length ? `, tags: ${m.tags.join(', ')}` : ''} [frekuensi: ${m.frequency}x/minggu]`).join('\n')}`
+        : '';
+
+      const prompt = `Kamu adalah perencana meal plan untuk anak muda Indonesia (mahasiswa/pekerja kantoran).
+
+TUGAS UTAMA: Susun jadwal makan ${days} hari dari makanan yang SUDAH DIKENAL user.
+
+${catalogContext}
 
 PREFERENSI USER:
 - Budget per hari: Rp ${dailyBudget.toLocaleString('id-ID')}
 - ${this.buildPrefContext(pref, remaining)}
 ${habitsContext ? `\nKEBIASAAN MAKAN USER:\n- ${habitsContext}` : ''}
 
-PANDUAN PENTING:
-1. PAHAMI kebiasaan makan user sebelum merekomendasikan:
-   - Jika user biasa makan nasi goreng tiap pagi, jangan langsung ganti semua — transisi perlahan
-   - Berikan variasi dari makanan yang mirip tapi lebih sehat jika kebiasaannya kurang baik
-   - Misal biasa makan mie instan → sarankan mie ayam homemade atau nasi + telur
-2. Jika user punya BATAS KALORI, pastikan total harian tidak melebihi target
-3. Jika user punya TARGET PROTEIN, pastikan setiap meal punya protein yang cukup
-4. VARIASIKAN menu (jangan ulang), perhatikan nutrisi seimbang
-5. Sertakan "healthNote" di setiap meal: tips singkat kenapa makanan ini baik atau alternatif yang lebih sehat
-6. Jika kebiasaan makan user tidak sehat, berikan transisi bertahap, bukan perubahan drastis
-7. Perhatikan alergi — WAJIB dihindari
+ATURAN PENTING:
+1. UTAMAKAN makanan dari daftar "MAKANAN YANG USER BIASA MAKAN" di atas
+2. HARGA: Gunakan harga PERSIS dari daftar catalog user. Jika makanan tidak ada di catalog, estimasi harganya berdasarkan referensi harga makanan lain di catalog (jangan terlalu murah!)
+3. JANGAN sarankan makanan asing yang user tidak tahu beli dimana — stick to what they know
+4. ATUR variasi: jangan makan yang sama tiap hari. Distribusi berdasarkan:
+   - Senin-Kamis: lebih hemat & sehat
+   - Jumat: boleh lebih enak (reward day)
+   - Weekend: fleksibel
+5. Jika user punya BATAS KALORI, atur supaya total harian tidak melebihi target
+6. Jika user punya TARGET PROTEIN, pastikan cukup protein per hari
+7. Sertakan "healthNote" singkat: kenapa susunan hari itu baik (misal "hari hemat", "high protein day")
+8. Jika makanan di catalog punya tag "berat"/"mahal", jangan taruh setiap hari
+9. Boleh tambah 1-2 makanan baru (yang umum & mudah didapat) sebagai variasi, tapi MAYORITAS dari catalog
+10. "note" di setiap meal bisa berisi tips seperti "pesan tanpa nasi untuk cut carbs" atau "tambah telur untuk protein"
 
-JSON response:
+JSON response (HARUS valid JSON, tanpa markdown):
 {
   "dailyBudget": ${dailyBudget},
   "totalEstimatedCost": number,
@@ -463,19 +478,22 @@ JSON response:
   "days": [
     {
       "day": 1,
+      "dayLabel": "Senin",
       "totalCalories": number,
+      "dayTheme": "Hari Hemat",
       "meals": [
         {
           "type": "breakfast" | "lunch" | "dinner",
           "name": "Nama Makanan",
-          "estimatedCost": 12000,
-          "calories": 400,
-          "protein": 20,
-          "carbs": 50,
-          "fat": 12,
-          "tags": ["homecook", "high-protein"],
-          "note": "Tips singkat",
-          "healthNote": "Kenapa makanan ini baik / alternatif lebih sehat"
+          "estimatedCost": number,
+          "calories": number,
+          "protein": number,
+          "carbs": number,
+          "fat": number,
+          "tags": ["from_catalog", "hemat"],
+          "note": "Tips opsional",
+          "healthNote": "Alasan/manfaat",
+          "source": "kantin kantor"
         }
       ]
     }
@@ -514,5 +532,101 @@ JSON response:
 
       return parsed;
     });
+  }
+
+  // === Meal Plan Persistence ===
+
+  async getActiveMealPlan(userId: string) {
+    // Get the most recent meal plan
+    const plan = await this.prisma.mealPlan.findFirst({
+      where: { userId },
+      orderBy: { weekStart: 'desc' },
+      include: { entries: true },
+    });
+    return plan;
+  }
+
+  async saveMealPlan(userId: string, planData: string, weekStart: string) {
+    const weekDate = new Date(weekStart);
+    // Upsert — replace existing plan for same week
+    const plan = await this.prisma.mealPlan.upsert({
+      where: { userId_weekStart: { userId, weekStart: weekDate } },
+      create: { userId, weekStart: weekDate, planData },
+      update: { planData, updatedAt: new Date() },
+    });
+
+    // Create entries for tracking
+    const parsed = JSON.parse(planData);
+    if (parsed.days) {
+      // Delete old entries first
+      await this.prisma.mealPlanEntry.deleteMany({ where: { planId: plan.id } });
+      const entries = [];
+      for (const day of parsed.days) {
+        for (const meal of day.meals) {
+          entries.push({
+            planId: plan.id,
+            day: day.day,
+            mealType: meal.type,
+            completed: false,
+            skipped: false,
+          });
+        }
+      }
+      await this.prisma.mealPlanEntry.createMany({ data: entries });
+    }
+
+    return this.prisma.mealPlan.findUnique({ where: { id: plan.id }, include: { entries: true } });
+  }
+
+  async updateMealEntry(userId: string, data: { planId: string; day: number; mealType: string; completed?: boolean; skipped?: boolean; actualCost?: number }) {
+    // Verify ownership
+    const plan = await this.prisma.mealPlan.findFirst({ where: { id: data.planId, userId } });
+    if (!plan) throw new Error('Plan not found');
+
+    return this.prisma.mealPlanEntry.update({
+      where: { planId_day_mealType: { planId: data.planId, day: data.day, mealType: data.mealType } },
+      data: {
+        ...(data.completed !== undefined && { completed: data.completed, completedAt: data.completed ? new Date() : null }),
+        ...(data.skipped !== undefined && { skipped: data.skipped }),
+        ...(data.actualCost !== undefined && { actualCost: data.actualCost }),
+      },
+    });
+  }
+
+  // === Meal Catalog ===
+
+  async getMealCatalog(userId: string) {
+    return this.prisma.userMealCatalog.findMany({
+      where: { userId },
+      orderBy: [{ frequency: 'desc' }, { updatedAt: 'desc' }],
+    });
+  }
+
+  async addMealToCatalog(userId: string, data: { name: string; mealType: string; price: number; calories?: number; protein?: number; tags?: string[]; source?: string }) {
+    return this.prisma.userMealCatalog.create({
+      data: {
+        userId,
+        name: data.name,
+        mealType: data.mealType,
+        price: data.price,
+        calories: data.calories || null,
+        protein: data.protein || null,
+        tags: data.tags || [],
+        source: data.source || null,
+      },
+    });
+  }
+
+  async updateCatalogMeal(userId: string, id: string, data: any) {
+    const existing = await this.prisma.userMealCatalog.findFirst({ where: { id, userId } });
+    if (!existing) throw new Error('Meal not found');
+    return this.prisma.userMealCatalog.update({ where: { id }, data });
+  }
+
+  async deleteCatalogMeal(userId: string, id: string) {
+    const existing = await this.prisma.userMealCatalog.findFirst({ where: { id, userId } });
+    if (!existing) throw new Error('Meal not found');
+    await this.prisma.userMealCatalog.delete({ where: { id } });
+    return { success: true };
   }
 }

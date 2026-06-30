@@ -89,4 +89,40 @@ export class FoodRecommendController {
   generateMealPlan(@GetUser() user: User, @Body() body: { days?: number }) {
     return this.svc.generateMealPlan(user.id, body.days || 7);
   }
+
+  @Get('meal-plan/active')
+  getActiveMealPlan(@GetUser() user: User) {
+    return this.svc.getActiveMealPlan(user.id);
+  }
+
+  @Post('meal-plan/save')
+  saveMealPlan(@GetUser() user: User, @Body() body: { planData: string; weekStart: string }) {
+    return this.svc.saveMealPlan(user.id, body.planData, body.weekStart);
+  }
+
+  @Patch('meal-plan/entry')
+  updateMealEntry(@GetUser() user: User, @Body() body: { planId: string; day: number; mealType: string; completed?: boolean; skipped?: boolean; actualCost?: number }) {
+    return this.svc.updateMealEntry(user.id, body);
+  }
+
+  // === Meal Catalog (user's known meals) ===
+  @Get('meal-catalog')
+  getMealCatalog(@GetUser() user: User) {
+    return this.svc.getMealCatalog(user.id);
+  }
+
+  @Post('meal-catalog')
+  addMealToCatalog(@GetUser() user: User, @Body() body: { name: string; mealType: string; price: number; calories?: number; protein?: number; tags?: string[]; source?: string }) {
+    return this.svc.addMealToCatalog(user.id, body);
+  }
+
+  @Patch('meal-catalog/:id')
+  updateCatalogMeal(@GetUser() user: User, @Param('id') id: string, @Body() body: { name?: string; mealType?: string; price?: number; calories?: number; protein?: number; tags?: string[]; source?: string; frequency?: number }) {
+    return this.svc.updateCatalogMeal(user.id, id, body);
+  }
+
+  @Delete('meal-catalog/:id')
+  deleteCatalogMeal(@GetUser() user: User, @Param('id') id: string) {
+    return this.svc.deleteCatalogMeal(user.id, id);
+  }
 }

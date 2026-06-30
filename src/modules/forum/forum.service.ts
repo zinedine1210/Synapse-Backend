@@ -197,6 +197,7 @@ export class ForumService {
           classId, userId,
           '📢 Pengumuman Baru',
           `${post.author.fullName}: ${autoTitle}`,
+          { category: 'kelas', actionUrl: `/class/${classId}/forum/${post.id}` },
         );
       } catch (e) { this.logger.warn('Notif announcement failed:', e); }
     }
@@ -208,6 +209,7 @@ export class ForumService {
           classId, userId,
           '⏰ Pengingat Baru',
           `${post.author.fullName} membuat pengingat: ${autoTitle}`,
+          { category: 'kelas', actionUrl: `/class/${classId}/forum/${post.id}` },
         );
       } catch (e) { this.logger.warn('Notif reminder failed:', e); }
     }
@@ -219,6 +221,7 @@ export class ForumService {
           classId, userId,
           '❓ Pertanyaan Baru',
           `${post.author.fullName} mengajukan pertanyaan: ${autoTitle}`,
+          { category: 'kelas', actionUrl: `/class/${classId}/forum/${post.id}` },
         );
       } catch (e) { this.logger.warn('Notif question failed:', e); }
     }
@@ -230,6 +233,7 @@ export class ForumService {
           classId, userId,
           '📊 Voting Baru',
           `${post.author.fullName} membuat voting: ${autoTitle}`,
+          { category: 'kelas', actionUrl: `/class/${classId}/forum/${post.id}` },
         );
       } catch (e) { this.logger.warn('Notif poll failed:', e); }
     }
@@ -353,13 +357,18 @@ export class ForumService {
 
     // Notify post author about new reply (don't notify yourself)
     if (post.authorId !== userId) {
-      const replierName = reply.author.fullName || 'Seseorang';
-      this.notificationService.createNotification(
-        post.authorId,
-        '💬 Balasan Baru',
-        `${replierName} membalas postmu "${post.title.slice(0, 40)}"`,
-        { category: 'forum', actionUrl: `/class/${post.classId}/forum/${post.id}` },
-      ).catch(() => {});
+      const pref = await this.prisma.notificationPreference.findUnique({
+        where: { userId: post.authorId },
+      });
+      if (!pref || pref.forumReply) {
+        const replierName = reply.author.fullName || 'Seseorang';
+        this.notificationService.createNotification(
+          post.authorId,
+          '💬 Balasan Baru',
+          `${replierName} membalas postmu "${post.title.slice(0, 40)}"`,
+          { category: 'kelas', actionUrl: `/class/${post.classId}/forum/${post.id}` },
+        ).catch(() => {});
+      }
     }
 
     const replyResult = {
@@ -540,6 +549,7 @@ export class ForumService {
           post.authorId,
           '📌 Pesan Disematkan',
           `${actor?.fullName || 'Seseorang'} menyematkan pesan Anda: "${post.title?.slice(0, 50)}"`,
+          { category: 'kelas', actionUrl: `/class/${post.classId}/forum/${postId}` },
         );
       } catch (e) { this.logger.warn('Notif pin failed:', e); }
     }
@@ -761,7 +771,7 @@ export class ForumService {
     });
   }
 
-  private async notifyMentions(content: string, classId: string, authorId: string, contextTitle: string, _postId: string) {
+  private async notifyMentions(content: string, classId: string, authorId: string, contextTitle: string, postId: string) {
     const matches = content.match(/@(\w+)/g);
     if (!matches) return;
 
@@ -785,6 +795,7 @@ export class ForumService {
         mm.userId,
         'Anda disebut di Forum',
         `Seseorang menyebut Anda di forum: "${contextTitle}"`,
+        { category: 'kelas', actionUrl: `/class/${classId}/forum/${postId}` },
       );
     }
   }
