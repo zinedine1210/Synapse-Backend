@@ -1,7 +1,8 @@
 import {
   Controller, Get, Post, Patch, Delete, Body, Param, Query,
-  UseGuards, ParseUUIDPipe,
+  UseGuards, ParseUUIDPipe, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { SkripsweetService } from './skripsweet.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
@@ -13,7 +14,7 @@ import {
   CreateChapterDto, UpdateChapterDto, AddJournalDto, SearchJournalDto,
   CreateBimbinganDto, UpdateBimbinganDto, ThesisChatDto, AiWriteAssistDto,
   GenerateBibliographyDto, AddBibliographyEntryDto,
-  PublishThesisDto, AddCommentDto,
+  PublishThesisDto, AddCommentDto, CreateRevisionDto,
 } from './dto/skripsweet.dto';
 
 @Controller('skripsweet')
@@ -96,6 +97,16 @@ export class SkripsweetController {
     return this.svc.explainFormat(user.id, id, dto);
   }
 
+  @Post(':id/format/upload')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadFormatFile(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.svc.uploadFormatFile(user.id, id, file);
+  }
+
   // ─── Chapters ──────────────────────────────────────────────
 
   @Post(':id/chapters')
@@ -122,6 +133,98 @@ export class SkripsweetController {
     return this.svc.deleteChapter(user.id, id, chapterId);
   }
 
+  @Post(':id/chapters/reorder')
+  reorderChapters(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { chapterIds: string[] },
+  ) {
+    return this.svc.reorderChapters(user.id, id, dto.chapterIds);
+  }
+
+  // ─── Chapter Revisions ─────────────────────────────────────
+
+  @Post(':id/chapters/:chapterId/revisions')
+  addRevision(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Body() dto: CreateRevisionDto,
+  ) {
+    return this.svc.addRevision(user.id, id, chapterId, dto);
+  }
+
+  @Patch(':id/chapters/:chapterId/revisions/:revisionId/resolve')
+  resolveRevision(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+  ) {
+    return this.svc.resolveRevision(user.id, id, chapterId, revisionId);
+  }
+
+  @Patch(':id/chapters/:chapterId/revisions/:revisionId/unresolve')
+  unresolveRevision(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+  ) {
+    return this.svc.unresolveRevision(user.id, id, chapterId, revisionId);
+  }
+
+  @Delete(':id/chapters/:chapterId/revisions/:revisionId')
+  deleteRevision(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+  ) {
+    return this.svc.deleteRevision(user.id, id, chapterId, revisionId);
+  }
+
+  // ─── Chapter Versions ──────────────────────────────────────
+
+  @Get(':id/chapters/:chapterId/versions')
+  getChapterVersions(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+  ) {
+    return this.svc.getChapterVersions(user.id, id, chapterId);
+  }
+
+  @Get(':id/chapters/:chapterId/versions/:versionId')
+  getChapterVersion(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+  ) {
+    return this.svc.getChapterVersion(user.id, id, chapterId, versionId);
+  }
+
+  @Post(':id/chapters/:chapterId/versions/save')
+  saveChapterVersion(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Body() dto: { label?: string },
+  ) {
+    return this.svc.saveChapterVersion(user.id, id, chapterId, dto.label);
+  }
+
+  @Post(':id/chapters/:chapterId/versions/:versionId/restore')
+  restoreChapterVersion(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+  ) {
+    return this.svc.restoreChapterVersion(user.id, id, chapterId, versionId);
+  }
+
   @Post(':id/chapters/:chapterId/feedback')
   getChapterFeedback(
     @GetUser() user: User,
@@ -146,6 +249,16 @@ export class SkripsweetController {
   @Post(':id/journals')
   addJournal(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AddJournalDto) {
     return this.svc.addJournal(user.id, id, dto);
+  }
+
+  @Patch(':id/journals/:journalId')
+  updateJournal(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('journalId', ParseUUIDPipe) journalId: string,
+    @Body() dto: AddJournalDto,
+  ) {
+    return this.svc.updateJournal(user.id, id, journalId, dto);
   }
 
   @Delete(':id/journals/:journalId')
@@ -191,6 +304,17 @@ export class SkripsweetController {
     @Param('bimbinganId', ParseUUIDPipe) bimbinganId: string,
   ) {
     return this.svc.deleteBimbingan(user.id, id, bimbinganId);
+  }
+
+  @Post(':id/bimbingan/:bimbinganId/upload')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  uploadBimbinganAttachment(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('bimbinganId', ParseUUIDPipe) bimbinganId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.svc.uploadBimbinganAttachment(user.id, id, bimbinganId, file);
   }
 
   // ─── Chat AI ───────────────────────────────────────────────

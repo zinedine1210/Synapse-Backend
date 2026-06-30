@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString, IsArray } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsArray, IsIn, IsInt } from 'class-validator';
 
 export class CreateTodoDto {
   @IsString()
@@ -31,6 +31,40 @@ export class CreateTodoDto {
   @IsOptional()
   @IsString()
   inputMethod?: string;
+
+  // Event/Jadwal fields
+  @IsOptional()
+  @IsIn(['todo', 'event'])
+  type?: string;
+
+  @IsOptional()
+  @IsString()
+  startTime?: string;
+
+  @IsOptional()
+  @IsString()
+  endTime?: string;
+
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @IsOptional()
+  @IsIn(['meeting', 'kuliah', 'ujian', 'penting', 'lainnya'])
+  eventType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  reminderMinutes?: number[];
+
+  @IsOptional()
+  @IsString()
+  sourceType?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceId?: string;
 }
 
 export class UpdateTodoDto {
@@ -65,4 +99,30 @@ export class UpdateTodoDto {
   @IsOptional()
   @IsArray()
   tags?: string[];
+
+  // Event/Jadwal fields
+  @IsOptional()
+  @IsIn(['todo', 'event'])
+  type?: string;
+
+  @IsOptional()
+  @IsString()
+  startTime?: string;
+
+  @IsOptional()
+  @IsString()
+  endTime?: string;
+
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @IsOptional()
+  @IsIn(['meeting', 'kuliah', 'ujian', 'penting', 'lainnya', null])
+  eventType?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  reminderMinutes?: number[];
 }

@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import { AiService } from '../ai/ai.service';
 import { AiUsageService } from '../../common/services/ai-usage.service';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   CreateThesisDto, UpdateThesisDto, SetFormatTemplateDto, ExplainFormatDto,
   CreateChapterDto, UpdateChapterDto, AddJournalDto, SearchJournalDto,
@@ -12,12 +14,19 @@ import {
 @Injectable()
 export class SkripsweetService {
   private readonly logger = new Logger(SkripsweetService.name);
+  private readonly supabase: SupabaseClient;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly aiUsage: AiUsageService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.supabase = createClient(
+      this.configService.get<string>('SUPABASE_URL')!,
+      this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+  }
 
   // ─── Helper: ownership check ──────────────────────────────────────────
 
@@ -57,7 +66,7 @@ export class SkripsweetService {
         abstract: dto.abstract,
         notes: dto.notes,
       },
-      include: { formatTemplate: true, chapters: true },
+      include: { formatTemplate: true, chapters: { orderBy: { chapterNum: 'asc' }, include: { revisions: { orderBy: { createdAt: 'desc' } } } } },
     });
     return thesis;
   }
@@ -67,7 +76,7 @@ export class SkripsweetService {
       where: { userId },
       include: {
         formatTemplate: true,
-        chapters: { orderBy: { chapterNum: 'asc' } },
+        chapters: { orderBy: { chapterNum: 'asc' }, include: { revisions: { orderBy: { createdAt: 'desc' } } } },
         _count: { select: { journals: true, bimbingans: true, chatMessages: true } },
       },
       orderBy: { updatedAt: 'desc' },
@@ -87,7 +96,7 @@ export class SkripsweetService {
         startDate: dto.startDate ? new Date(dto.startDate) : undefined,
         targetDate: dto.targetDate ? new Date(dto.targetDate) : undefined,
       },
-      include: { formatTemplate: true, chapters: { orderBy: { chapterNum: 'asc' } } },
+      include: { formatTemplate: true, chapters: { orderBy: { chapterNum: 'asc' }, include: { revisions: { orderBy: { createdAt: 'desc' } } } } },
     });
   }
 
@@ -229,6 +238,55 @@ Balas dalam JSON SAJA (tanpa markdown code block), dengan format:
     }
   }
 
+  // Upload format file (PDF/DOCX) → extract text → AI parse structure
+  async uploadFormatFile(userId: string, thesisId: string, file: Express.Multer.File) {
+    await this.aiUsage.checkAndRecord(userId, 'skripsweet');
+    await this.getThesisOrFail(userId, thesisId);
+
+    if (!file) throw new BadRequestException('File tidak ditemukan');
+    
+    // Extract text from file
+    let extractedText = '';
+    if (file.mimetype === 'application/pdf') {
+      const pdfParse = require('pdf-parse');
+      const pdfData = await pdfParse(file.buffer);
+      extractedText = pdfData.text;
+    } else {
+      // For DOCX or other text-based files, try direct text extraction
+      extractedText = file.buffer.toString('utf-8').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+
+    if (!extractedText || extractedText.length < 50) {
+      throw new BadRequestException('Tidak bisa membaca isi file. Pastikan file mengandung teks (bukan gambar scan).');
+    }
+
+    // Truncate to avoid token limits
+    const textSample = extractedText.substring(0, 8000);
+
+    // Use the same explainFormat logic but with extracted text
+    return this.explainFormat(userId, thesisId, { explanation: `Berikut adalah contoh skripsi dari kampus saya. Tolong analisis strukturnya (bab-bab, format margin, font, spasi, gaya sitasi, dll):\n\n${textSample}` });
+  }
+
+  // Upload bimbingan attachment
+  async uploadBimbinganAttachment(userId: string, thesisId: string, bimbinganId: string, file: Express.Multer.File) {
+    await this.getThesisOrFail(userId, thesisId);
+    const bimbingan = await this.prisma.thesisBimbingan.findUnique({ where: { id: bimbinganId } });
+    if (!bimbingan || bimbingan.thesisId !== thesisId) throw new NotFoundException('Bimbingan tidak ditemukan');
+
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileName = `skripsweet/${userId}/${thesisId}/bimbingan/${Date.now()}-${safeName}`;
+
+    const { error } = await this.supabase.storage.from('materials').upload(fileName, file.buffer, { contentType: file.mimetype });
+    if (error) throw new BadRequestException('Gagal mengupload file');
+
+    const { data } = this.supabase.storage.from('materials').getPublicUrl(fileName);
+
+    return this.prisma.thesisBimbingan.update({
+      where: { id: bimbinganId },
+      data: { attachment: data.publicUrl },
+    });
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // CHAPTERS
   // ═══════════════════════════════════════════════════════════════════════
@@ -260,10 +318,22 @@ Balas dalam JSON SAJA (tanpa markdown code block), dengan format:
     if (dto.content !== undefined) {
       const plainText = dto.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       wordCount = plainText.split(/\s+/).filter(Boolean).length;
-      // Count paragraphs (p tags or double newlines)
       paragraphCount = (dto.content.match(/<\/p>/gi) || []).length || plainText.split(/\n\s*\n/).filter(Boolean).length;
-      // Estimate pages (avg 250 words per page)
       pageEstimate = Math.round((wordCount / 250) * 10) / 10;
+
+      // Auto-save version if content changed significantly (>50 word diff or first save)
+      if (chapter.content && Math.abs(wordCount - chapter.wordCount) >= 50) {
+        await this.prisma.chapterVersion.create({
+          data: { chapterId, content: chapter.content, wordCount: chapter.wordCount },
+        });
+        // Keep max 20 versions per chapter
+        const versions = await this.prisma.chapterVersion.findMany({
+          where: { chapterId }, orderBy: { createdAt: 'desc' }, skip: 20, select: { id: true },
+        });
+        if (versions.length > 0) {
+          await this.prisma.chapterVersion.deleteMany({ where: { id: { in: versions.map(v => v.id) } } });
+        }
+      }
     }
 
     return this.prisma.thesisChapter.update({
@@ -272,9 +342,122 @@ Balas dalam JSON SAJA (tanpa markdown code block), dengan format:
     });
   }
 
+  // ─── Chapter Versions ───────────────────────────────────────
+  async getChapterVersions(userId: string, thesisId: string, chapterId: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    return this.prisma.chapterVersion.findMany({
+      where: { chapterId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, wordCount: true, label: true, createdAt: true },
+    });
+  }
+
+  async getChapterVersion(userId: string, thesisId: string, chapterId: string, versionId: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    const version = await this.prisma.chapterVersion.findUnique({ where: { id: versionId } });
+    if (!version || version.chapterId !== chapterId) throw new NotFoundException('Versi tidak ditemukan');
+    return version;
+  }
+
+  async restoreChapterVersion(userId: string, thesisId: string, chapterId: string, versionId: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    const chapter = await this.prisma.thesisChapter.findUnique({ where: { id: chapterId } });
+    if (!chapter || chapter.thesisId !== thesisId) throw new NotFoundException('Bab tidak ditemukan');
+    const version = await this.prisma.chapterVersion.findUnique({ where: { id: versionId } });
+    if (!version || version.chapterId !== chapterId) throw new NotFoundException('Versi tidak ditemukan');
+    // Save current as version before restoring
+    if (chapter.content) {
+      await this.prisma.chapterVersion.create({
+        data: { chapterId, content: chapter.content, wordCount: chapter.wordCount, label: 'Sebelum restore' },
+      });
+    }
+    return this.prisma.thesisChapter.update({
+      where: { id: chapterId },
+      data: { content: version.content, wordCount: version.wordCount },
+    });
+  }
+
+  async saveChapterVersion(userId: string, thesisId: string, chapterId: string, label?: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    const chapter = await this.prisma.thesisChapter.findUnique({ where: { id: chapterId } });
+    if (!chapter || chapter.thesisId !== thesisId) throw new NotFoundException('Bab tidak ditemukan');
+    if (!chapter.content) throw new NotFoundException('Bab belum memiliki konten');
+    return this.prisma.chapterVersion.create({
+      data: { chapterId, content: chapter.content, wordCount: chapter.wordCount, label },
+    });
+  }
+
   async deleteChapter(userId: string, thesisId: string, chapterId: string) {
     await this.getThesisOrFail(userId, thesisId);
     await this.prisma.thesisChapter.delete({ where: { id: chapterId } });
+    return { deleted: true };
+  }
+
+  async reorderChapters(userId: string, thesisId: string, chapterIds: string[]) {
+    await this.getThesisOrFail(userId, thesisId);
+    const updates = chapterIds.map((id, i) =>
+      this.prisma.thesisChapter.update({ where: { id }, data: { sortOrder: i + 1, chapterNum: i + 1 } }),
+    );
+    await this.prisma.$transaction(updates);
+    return { reordered: true };
+  }
+
+  // ─── Chapter Revisions ──────────────────────────────────────
+  async addRevision(userId: string, thesisId: string, chapterId: string, dto: { note: string; round?: number }) {
+    await this.getThesisOrFail(userId, thesisId);
+    const chapter = await this.prisma.thesisChapter.findUnique({ where: { id: chapterId } });
+    if (!chapter || chapter.thesisId !== thesisId) throw new NotFoundException('Bab tidak ditemukan');
+    // Auto-detect round from existing revisions
+    const maxRound = await this.prisma.chapterRevision.aggregate({ where: { chapterId }, _max: { round: true } });
+    const round = dto.round || (maxRound._max.round || 0) + 1;
+    const revision = await this.prisma.chapterRevision.create({
+      data: { chapterId, thesisId, note: dto.note, round },
+    });
+    // Auto-set chapter status to revision
+    await this.prisma.thesisChapter.update({ where: { id: chapterId }, data: { status: 'revision' } });
+    return revision;
+  }
+
+  async resolveRevision(userId: string, thesisId: string, chapterId: string, revisionId: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    const revision = await this.prisma.chapterRevision.findUnique({ where: { id: revisionId } });
+    if (!revision || revision.chapterId !== chapterId) throw new NotFoundException('Revisi tidak ditemukan');
+    const updated = await this.prisma.chapterRevision.update({
+      where: { id: revisionId },
+      data: { status: 'resolved', resolvedAt: new Date() },
+    });
+    // If all revisions resolved, auto-set chapter status to drafting
+    const pending = await this.prisma.chapterRevision.count({ where: { chapterId, status: 'pending' } });
+    if (pending === 0) {
+      await this.prisma.thesisChapter.update({ where: { id: chapterId }, data: { status: 'drafting' } });
+    }
+    return updated;
+  }
+
+  async unresolveRevision(userId: string, thesisId: string, chapterId: string, revisionId: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    const revision = await this.prisma.chapterRevision.findUnique({ where: { id: revisionId } });
+    if (!revision || revision.chapterId !== chapterId) throw new NotFoundException('Revisi tidak ditemukan');
+    const updated = await this.prisma.chapterRevision.update({
+      where: { id: revisionId },
+      data: { status: 'pending', resolvedAt: null },
+    });
+    await this.prisma.thesisChapter.update({ where: { id: chapterId }, data: { status: 'revision' } });
+    return updated;
+  }
+
+  async deleteRevision(userId: string, thesisId: string, chapterId: string, revisionId: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    await this.prisma.chapterRevision.delete({ where: { id: revisionId } });
+    const pending = await this.prisma.chapterRevision.count({ where: { chapterId, status: 'pending' } });
+    if (pending === 0) {
+      const total = await this.prisma.chapterRevision.count({ where: { chapterId } });
+      if (total === 0) {
+        // No revisions left, keep current status
+      } else {
+        await this.prisma.thesisChapter.update({ where: { id: chapterId }, data: { status: 'drafting' } });
+      }
+    }
     return { deleted: true };
   }
 
@@ -344,6 +527,13 @@ Berikan feedback dalam format markdown:
     });
   }
 
+  async updateJournal(userId: string, thesisId: string, journalId: string, dto: Partial<AddJournalDto>) {
+    await this.getThesisOrFail(userId, thesisId);
+    const journal = await this.prisma.thesisJournal.findUnique({ where: { id: journalId } });
+    if (!journal || journal.thesisId !== thesisId) throw new NotFoundException('Jurnal tidak ditemukan');
+    return this.prisma.thesisJournal.update({ where: { id: journalId }, data: dto });
+  }
+
   async removeJournal(userId: string, thesisId: string, journalId: string) {
     await this.getThesisOrFail(userId, thesisId);
     await this.prisma.thesisJournal.delete({ where: { id: journalId } });
@@ -364,7 +554,8 @@ Berikan feedback dalam format markdown:
 
       if (!response.ok) {
         this.logger.warn(`Semantic Scholar API error: ${response.status}`);
-        return { results: [], source: 'error' };
+        // On rate limit (429) or error, fallback to AI
+        throw new Error(`API returned ${response.status}`);
       }
 
       const data = await response.json();
@@ -973,8 +1164,8 @@ Balas JSON saja tanpa markdown code block.`;
     const format = formatTemplate ? JSON.parse(formatTemplate.formatRules || '{}') : {};
     
     // Build HTML document
-    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-      body { font-family: '${format.font?.name || 'Times New Roman'}', serif; font-size: ${format.font?.size || 12}pt; line-height: ${format.spacing || '1.5'}; margin: 0; padding: 40px; }
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${thesis.title}</title><style>
+      body { font-family: '${format.font?.name || 'Times New Roman'}', serif; font-size: ${format.font?.size || 12}pt; line-height: ${format.spacing || '1.5'}; margin: 0; padding: 40px; color: #000; }
       h1 { text-align: center; font-size: 14pt; font-weight: bold; margin-top: 40px; margin-bottom: 20px; }
       h2 { font-size: 12pt; font-weight: bold; margin-top: 24px; }
       p { text-align: justify; text-indent: 1.27cm; margin: 0 0 12px; }
@@ -983,7 +1174,12 @@ Balas JSON saja tanpa markdown code block.`;
       .chapter { page-break-before: always; }
       .bibliography { page-break-before: always; }
       .bib-entry { text-indent: -1.27cm; padding-left: 1.27cm; margin-bottom: 8px; }
-      @page { margin: ${format.margins?.top || '3'}cm ${format.margins?.right || '3'}cm ${format.margins?.bottom || '3'}cm ${format.margins?.left || '4'}cm; }
+      @page { margin: ${format.margins?.top || '3'}cm ${format.margins?.right || '3'}cm ${format.margins?.bottom || '3'}cm ${format.margins?.left || '4'}cm; size: A4; }
+      @media print {
+        body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .chapter { page-break-before: always; }
+        .title-page { page-break-after: always; }
+      }
     </style></head><body>`;
 
     // Title page

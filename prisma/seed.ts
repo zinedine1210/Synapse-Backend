@@ -760,6 +760,166 @@ async function main() {
     console.log(`   - 1 exam prediction with 5 questions`);
     console.log(`   - 2 custom tabs`);
     console.log(`   - ${notifDefs.length} notifications`);
+
+    // ── SKRIPSWEET: Complete thesis for superadmin (Zinedine Dev) ──
+    const thesisId = 'thesis-zinedine-complete-001';
+    await prisma.thesisProject.upsert({
+      where: { id: thesisId },
+      update: {},
+      create: {
+        id: thesisId,
+        userId: superadminId,
+        title: 'Implementasi Arsitektur Microservices dengan Event-Driven Communication pada Sistem E-Learning Berbasis Cloud',
+        university: 'Universitas Teknologi Nusantara',
+        faculty: 'Fakultas Ilmu Komputer',
+        department: 'Teknik Informatika',
+        supervisor: 'Prof. Dr. Andi Wijaya, M.T.',
+        supervisorTwo: 'Dr. Maria Tan, M.Cs.',
+        status: 'completed',
+        startDate: new Date('2025-09-01'),
+        targetDate: new Date('2026-06-15'),
+        abstract: 'Penelitian ini mengimplementasikan arsitektur microservices dengan komunikasi event-driven menggunakan Apache Kafka pada sistem e-learning berbasis cloud. Sistem dikembangkan menggunakan NestJS sebagai backend framework, React/Next.js sebagai frontend, dan PostgreSQL sebagai database utama. Hasil pengujian menunjukkan peningkatan throughput sebesar 340% dibandingkan arsitektur monolitik, dengan rata-rata response time 45ms pada beban 10.000 concurrent users. Arsitektur ini juga meningkatkan fault tolerance dan memungkinkan horizontal scaling yang efisien.',
+        isPublished: true,
+        publishedAt: new Date('2026-06-20'),
+        tags: ['microservices', 'event-driven', 'cloud-computing', 'e-learning', 'nestjs', 'kafka'],
+        viewCount: 127,
+      },
+    });
+
+    // Format template
+    await prisma.thesisFormatTemplate.upsert({
+      where: { thesisId },
+      update: {},
+      create: {
+        thesisId,
+        universityName: 'Universitas Teknologi Nusantara',
+        formatRules: JSON.stringify({
+          margins: { top: 3, bottom: 3, left: 4, right: 3 },
+          font: { family: 'Times New Roman', size: 12 },
+          spacing: 1.5,
+          chapterTitle: { align: 'center', case: 'upper', bold: true, size: 14 },
+          pageNumbering: 'bottom-center',
+        }),
+        chapterTemplate: JSON.stringify([
+          { num: 1, title: 'PENDAHULUAN', sections: ['Latar Belakang', 'Rumusan Masalah', 'Tujuan Penelitian', 'Manfaat Penelitian', 'Batasan Masalah'] },
+          { num: 2, title: 'TINJAUAN PUSTAKA', sections: ['Landasan Teori', 'Penelitian Terkait', 'Kerangka Pemikiran'] },
+          { num: 3, title: 'METODOLOGI PENELITIAN', sections: ['Desain Penelitian', 'Alat dan Bahan', 'Prosedur Penelitian', 'Teknik Analisis'] },
+          { num: 4, title: 'HASIL DAN PEMBAHASAN', sections: ['Implementasi Sistem', 'Pengujian', 'Analisis Hasil', 'Pembahasan'] },
+          { num: 5, title: 'KESIMPULAN DAN SARAN', sections: ['Kesimpulan', 'Saran'] },
+        ]),
+        citationStyle: 'apa7',
+        language: 'id',
+      },
+    });
+
+    // Chapters with content
+    const chapterContents = [
+      {
+        id: 'ch-zin-001', title: 'BAB I - Pendahuluan', chapterNum: 1, status: 'done', sortOrder: 1,
+        targetWords: 3000, targetPages: 12,
+        content: '<h2>1.1 Latar Belakang</h2><p>Perkembangan teknologi informasi yang pesat telah mendorong transformasi digital di berbagai sektor, termasuk pendidikan. Sistem e-learning menjadi salah satu solusi yang banyak diadopsi untuk mendukung proses pembelajaran jarak jauh. Namun, arsitektur monolitik yang umumnya digunakan pada sistem e-learning konvensional memiliki keterbatasan dalam hal skalabilitas, maintainability, dan fault tolerance.</p><p>Arsitektur microservices menawarkan pendekatan yang lebih modular, di mana setiap komponen sistem dipisahkan menjadi layanan independen yang dapat dikembangkan, di-deploy, dan di-scale secara terpisah. Komunikasi antar layanan menggunakan pola event-driven memungkinkan loose coupling dan asynchronous processing yang meningkatkan responsiveness sistem secara keseluruhan.</p><p>Apache Kafka sebagai distributed event streaming platform telah terbukti mampu menangani jutaan event per detik dengan latency yang rendah. Kombinasi microservices dengan Kafka sebagai message broker menjadi arsitektur yang ideal untuk sistem e-learning skala besar yang membutuhkan real-time processing dan high availability.</p><h2>1.2 Rumusan Masalah</h2><p>Berdasarkan latar belakang yang telah diuraikan, rumusan masalah dalam penelitian ini adalah:</p><ol><li>Bagaimana merancang arsitektur microservices yang optimal untuk sistem e-learning berbasis cloud?</li><li>Bagaimana mengimplementasikan komunikasi event-driven menggunakan Apache Kafka antar microservices?</li><li>Bagaimana performa sistem microservices dibandingkan dengan arsitektur monolitik dalam menangani beban tinggi?</li></ol><h2>1.3 Tujuan Penelitian</h2><p>Tujuan dari penelitian ini adalah:</p><ol><li>Merancang dan mengimplementasikan arsitektur microservices untuk sistem e-learning.</li><li>Mengimplementasikan komunikasi event-driven menggunakan Apache Kafka.</li><li>Mengukur dan menganalisis performa sistem dalam hal throughput, response time, dan fault tolerance.</li></ol><h2>1.4 Manfaat Penelitian</h2><p>Penelitian ini diharapkan dapat memberikan kontribusi berupa referensi arsitektur microservices yang dapat diadaptasi untuk pengembangan sistem e-learning di institusi pendidikan lainnya, serta bukti empiris mengenai keunggulan arsitektur event-driven dalam konteks aplikasi pendidikan.</p><h2>1.5 Batasan Masalah</h2><p>Penelitian ini dibatasi pada implementasi 5 core microservices (Auth, Course, Forum, Quiz, Notification) dengan Apache Kafka sebagai message broker utama. Pengujian performa dilakukan pada infrastruktur cloud AWS dengan konfigurasi yang telah ditentukan.</p>',
+        wordCount: 350,
+      },
+      {
+        id: 'ch-zin-002', title: 'BAB II - Tinjauan Pustaka', chapterNum: 2, status: 'done', sortOrder: 2,
+        targetWords: 5000, targetPages: 20,
+        content: '<h2>2.1 Landasan Teori</h2><h3>2.1.1 Arsitektur Microservices</h3><p>Microservices adalah pendekatan arsitektur perangkat lunak di mana aplikasi dikembangkan sebagai kumpulan layanan kecil yang independen, masing-masing berjalan dalam prosesnya sendiri dan berkomunikasi melalui mekanisme ringan seperti HTTP API atau messaging (Newman, 2021). Setiap microservice bertanggung jawab atas satu domain bisnis spesifik dan dapat dikembangkan, di-deploy, serta di-scale secara independen.</p><p>Menurut Richardson (2018), karakteristik utama arsitektur microservices meliputi: (1) Loosely coupled - setiap service dapat dimodifikasi tanpa mempengaruhi service lain, (2) Independently deployable - setiap service dapat di-deploy secara terpisah, (3) Organized around business capabilities - pembagian service berdasarkan domain bisnis, (4) Owned by small teams - setiap service dikelola oleh tim kecil yang cross-functional.</p><h3>2.1.2 Event-Driven Architecture</h3><p>Event-Driven Architecture (EDA) adalah pola arsitektur di mana produksi, deteksi, konsumsi, dan reaksi terhadap event menjadi inti dari struktur aplikasi (Bellemare, 2020). Dalam konteks microservices, EDA memungkinkan komunikasi asynchronous antar service melalui event yang dipublikasikan ke message broker.</p><p>Pola-pola umum dalam EDA meliputi: Event Notification, Event-Carried State Transfer, Event Sourcing, dan CQRS (Command Query Responsibility Segregation). Masing-masing pola memiliki trade-off yang perlu dipertimbangkan berdasarkan kebutuhan sistem.</p><h3>2.1.3 Apache Kafka</h3><p>Apache Kafka adalah platform distributed event streaming yang dirancang untuk throughput tinggi, fault tolerance, dan durability (Narkhede et al., 2017). Kafka menggunakan konsep topic-based publish-subscribe, di mana producer menulis event ke topic dan consumer membaca event dari topic tersebut.</p><p>Fitur-fitur utama Kafka yang relevan untuk penelitian ini meliputi: partitioning untuk parallel processing, replication untuk fault tolerance, consumer groups untuk load balancing, dan log compaction untuk event sourcing.</p><h2>2.2 Penelitian Terkait</h2><p>Beberapa penelitian terkait yang menjadi referensi dalam penelitian ini antara lain:</p><p>Zhang et al. (2022) mengimplementasikan microservices pada platform MOOC menggunakan Spring Cloud dan RabbitMQ. Hasil penelitian menunjukkan peningkatan scalability sebesar 200% namun dengan overhead komunikasi yang signifikan pada synchronous calls.</p><p>Kumar & Singh (2023) membandingkan performa REST API vs event-driven communication pada sistem manajemen kampus. Penelitian ini menemukan bahwa event-driven approach mengurangi coupling antar service sebesar 60% dan meningkatkan system resilience.</p><p>Li et al. (2024) mengevaluasi penggunaan Apache Kafka sebagai backbone komunikasi pada sistem pendidikan real-time dengan 50.000 concurrent users. Hasil menunjukkan Kafka mampu memproses 1.2 juta events/detik dengan p99 latency di bawah 10ms.</p><h2>2.3 Kerangka Pemikiran</h2><p>Berdasarkan tinjauan pustaka yang telah dilakukan, kerangka pemikiran penelitian ini dibangun atas tiga pilar utama: (1) Dekomposisi sistem e-learning ke dalam bounded contexts menggunakan Domain-Driven Design, (2) Implementasi komunikasi antar service menggunakan event-driven patterns via Apache Kafka, dan (3) Deployment pada infrastruktur cloud dengan container orchestration menggunakan Kubernetes.</p>',
+        wordCount: 580,
+      },
+      {
+        id: 'ch-zin-003', title: 'BAB III - Metodologi Penelitian', chapterNum: 3, status: 'done', sortOrder: 3,
+        targetWords: 4000, targetPages: 16,
+        content: '<h2>3.1 Desain Penelitian</h2><p>Penelitian ini menggunakan pendekatan Design Science Research (DSR) yang terdiri dari enam tahap: identifikasi masalah, definisi objektif, desain dan pengembangan, demonstrasi, evaluasi, dan komunikasi (Peffers et al., 2007).</p><p>Metodologi pengembangan perangkat lunak yang digunakan adalah Agile dengan framework Scrum, di mana setiap sprint berdurasi 2 minggu. Total pengembangan berlangsung selama 6 sprint (12 minggu).</p><h2>3.2 Alat dan Bahan</h2><h3>3.2.1 Teknologi Backend</h3><ul><li>NestJS v10 - Framework Node.js untuk microservices</li><li>Apache Kafka v3.5 - Distributed event streaming platform</li><li>PostgreSQL v15 - Relational database</li><li>Redis v7 - Caching dan session management</li><li>Docker & Kubernetes - Container orchestration</li></ul><h3>3.2.2 Teknologi Frontend</h3><ul><li>Next.js v14 - React framework dengan SSR/SSG</li><li>TypeScript v5 - Type-safe development</li><li>Socket.IO - Real-time bidirectional communication</li></ul><h3>3.2.3 Infrastruktur Cloud</h3><ul><li>AWS EKS - Managed Kubernetes</li><li>AWS MSK - Managed Kafka</li><li>AWS RDS - Managed PostgreSQL</li><li>AWS CloudFront - CDN</li></ul><h2>3.3 Prosedur Penelitian</h2><p>Prosedur penelitian dibagi menjadi beberapa fase:</p><p><strong>Fase 1 - Domain Decomposition:</strong> Mengidentifikasi bounded contexts dan mendefinisikan microservices yang diperlukan menggunakan teknik Event Storming.</p><p><strong>Fase 2 - Architecture Design:</strong> Merancang arsitektur sistem secara keseluruhan, termasuk service boundaries, communication patterns, dan data management strategy.</p><p><strong>Fase 3 - Implementation:</strong> Mengimplementasikan setiap microservice, event handlers, dan integration points sesuai desain arsitektur.</p><p><strong>Fase 4 - Testing & Evaluation:</strong> Melakukan pengujian fungsional, load testing, dan chaos engineering untuk mengukur performa dan reliability sistem.</p><h2>3.4 Teknik Analisis</h2><p>Analisis performa dilakukan menggunakan tools berikut: Apache JMeter untuk load testing, Grafana + Prometheus untuk monitoring, dan Jaeger untuk distributed tracing. Metrik yang diukur meliputi throughput (req/s), response time (p50, p95, p99), error rate, dan resource utilization.</p>',
+        wordCount: 420,
+      },
+      {
+        id: 'ch-zin-004', title: 'BAB IV - Hasil dan Pembahasan', chapterNum: 4, status: 'done', sortOrder: 4,
+        targetWords: 6000, targetPages: 24,
+        content: '<h2>4.1 Implementasi Sistem</h2><h3>4.1.1 Service Decomposition</h3><p>Berdasarkan hasil Event Storming, sistem e-learning didekomposisi menjadi 5 core microservices:</p><ol><li><strong>Auth Service</strong> - Mengelola autentikasi, otorisasi, dan manajemen user</li><li><strong>Course Service</strong> - Mengelola kursus, materi, dan progress tracking</li><li><strong>Forum Service</strong> - Mengelola diskusi, posting, dan real-time messaging</li><li><strong>Quiz Service</strong> - Mengelola pembuatan quiz, attempts, dan scoring</li><li><strong>Notification Service</strong> - Mengelola notifikasi multi-channel (in-app, email, push)</li></ol><h3>4.1.2 Event-Driven Communication</h3><p>Komunikasi antar service diimplementasikan menggunakan Apache Kafka dengan pola berikut:</p><ul><li>Event Notification: Digunakan untuk notifikasi perubahan state (e.g., UserRegistered, CourseCompleted)</li><li>Event-Carried State Transfer: Digunakan untuk sinkronisasi data antar service tanpa synchronous calls</li><li>CQRS: Digunakan pada Forum Service untuk memisahkan write model (commands) dan read model (queries)</li></ul><p>Total 23 event types didefinisikan dengan schema Avro untuk memastikan backward compatibility.</p><h2>4.2 Pengujian</h2><h3>4.2.1 Load Testing</h3><p>Load testing dilakukan menggunakan Apache JMeter dengan skenario berikut:</p><table><tr><th>Skenario</th><th>Concurrent Users</th><th>Duration</th><th>Ramp-up</th></tr><tr><td>Normal Load</td><td>1,000</td><td>30 min</td><td>5 min</td></tr><tr><td>Peak Load</td><td>5,000</td><td>15 min</td><td>3 min</td></tr><tr><td>Stress Test</td><td>10,000</td><td>10 min</td><td>2 min</td></tr></table><h3>4.2.2 Hasil Pengujian Performa</h3><p>Perbandingan performa antara arsitektur monolitik dan microservices:</p><table><tr><th>Metrik</th><th>Monolitik</th><th>Microservices</th><th>Improvement</th></tr><tr><td>Throughput (req/s)</td><td>850</td><td>3,740</td><td>+340%</td></tr><tr><td>Response Time p50</td><td>120ms</td><td>32ms</td><td>-73%</td></tr><tr><td>Response Time p99</td><td>1,850ms</td><td>185ms</td><td>-90%</td></tr><tr><td>Error Rate (@ 10K users)</td><td>12.3%</td><td>0.4%</td><td>-97%</td></tr></table><h2>4.3 Analisis Hasil</h2><p>Hasil pengujian menunjukkan peningkatan performa yang signifikan pada arsitektur microservices. Throughput meningkat 340% karena setiap service dapat di-scale secara independen berdasarkan beban masing-masing. Response time menurun drastis karena eliminasi contention pada shared resources yang umum terjadi pada arsitektur monolitik.</p><p>Error rate yang sangat rendah (0.4%) pada beban 10.000 concurrent users menunjukkan fault tolerance yang baik, di mana kegagalan pada satu service tidak menyebabkan cascading failure ke service lain berkat circuit breaker pattern dan event-driven communication.</p><h2>4.4 Pembahasan</h2><p>Meskipun arsitektur microservices menunjukkan keunggulan performa yang signifikan, terdapat trade-off yang perlu dipertimbangkan: (1) Kompleksitas operasional yang lebih tinggi memerlukan investment pada observability tools dan DevOps practices, (2) Eventual consistency memerlukan careful design pada business logic yang membutuhkan strong consistency, (3) Network latency antar service dapat terakumulasi pada request yang melibatkan multiple services.</p>',
+        wordCount: 650,
+      },
+      {
+        id: 'ch-zin-005', title: 'BAB V - Kesimpulan dan Saran', chapterNum: 5, status: 'done', sortOrder: 5,
+        targetWords: 2000, targetPages: 8,
+        content: '<h2>5.1 Kesimpulan</h2><p>Berdasarkan hasil penelitian yang telah dilakukan, dapat disimpulkan:</p><ol><li>Arsitektur microservices berhasil diimplementasikan pada sistem e-learning dengan dekomposisi menjadi 5 core services yang saling independen. Domain-Driven Design dan Event Storming terbukti efektif sebagai metode untuk menentukan service boundaries.</li><li>Komunikasi event-driven menggunakan Apache Kafka berhasil diimplementasikan dengan 23 event types yang mencakup seluruh interaksi antar service. Pola Event-Carried State Transfer mengeliminasi kebutuhan synchronous calls sebesar 78%, sementara CQRS pada Forum Service meningkatkan read performance sebesar 5x.</li><li>Performa sistem microservices menunjukkan peningkatan signifikan dibandingkan arsitektur monolitik: throughput +340%, response time p99 -90%, dan error rate -97% pada beban 10.000 concurrent users. Sistem juga menunjukkan kemampuan horizontal scaling yang linear hingga 20.000 users tanpa degradasi performa yang berarti.</li></ol><h2>5.2 Saran</h2><p>Untuk pengembangan lebih lanjut, disarankan:</p><ol><li>Implementasi service mesh (Istio) untuk manajemen traffic yang lebih sophisticated dan mTLS antar service.</li><li>Penerapan Event Sourcing secara penuh pada service yang memerlukan audit trail lengkap.</li><li>Eksplorasi penggunaan serverless functions untuk event handlers yang bersifat stateless dan sporadik.</li><li>Implementasi multi-region deployment untuk disaster recovery dan reduced latency bagi pengguna di lokasi geografis yang berbeda.</li></ol>',
+        wordCount: 290,
+      },
+    ];
+
+    for (const ch of chapterContents) {
+      await prisma.thesisChapter.upsert({
+        where: { id: ch.id },
+        update: {},
+        create: { ...ch, thesisId },
+      });
+    }
+
+    // Journals
+    const journalDefs = [
+      { id: 'j-zin-001', thesisId, title: 'Building Microservices: Designing Fine-Grained Systems', authors: 'Sam Newman', year: 2021, journalName: 'O\'Reilly Media', isFromSearch: false, citationKey: 'Newman2021', relevance: 'Referensi utama arsitektur microservices' },
+      { id: 'j-zin-002', thesisId, title: 'Microservices Patterns: With Examples in Java', authors: 'Chris Richardson', year: 2018, journalName: 'Manning Publications', isFromSearch: false, citationKey: 'Richardson2018', relevance: 'Pola-pola komunikasi microservices' },
+      { id: 'j-zin-003', thesisId, title: 'Building Event-Driven Microservices', authors: 'Adam Bellemare', year: 2020, journalName: 'O\'Reilly Media', isFromSearch: false, citationKey: 'Bellemare2020', relevance: 'Event-driven architecture patterns' },
+      { id: 'j-zin-004', thesisId, title: 'Kafka: The Definitive Guide', authors: 'Neha Narkhede, Gwen Shapira, Todd Palino', year: 2017, journalName: 'O\'Reilly Media', isFromSearch: false, citationKey: 'Narkhede2017', relevance: 'Apache Kafka internals dan best practices' },
+      { id: 'j-zin-005', thesisId, title: 'Performance evaluation of microservices architecture for MOOC platforms', authors: 'Zhang, Y., Li, W., & Chen, H.', year: 2022, journalName: 'Journal of Cloud Computing', isFromSearch: true, citationKey: 'Zhang2022', doi: '10.1186/s13677-022-00312-x', relevance: 'Evaluasi performa microservices pada platform MOOC' },
+      { id: 'j-zin-006', thesisId, title: 'Comparative analysis of REST and event-driven approaches in campus management systems', authors: 'Kumar, R. & Singh, A.', year: 2023, journalName: 'IEEE Access', isFromSearch: true, citationKey: 'Kumar2023', doi: '10.1109/ACCESS.2023.3241567', relevance: 'Perbandingan REST vs event-driven' },
+      { id: 'j-zin-007', thesisId, title: 'Scalable real-time education systems using Apache Kafka', authors: 'Li, X., Wang, Q., & Zhou, M.', year: 2024, journalName: 'Future Generation Computer Systems', isFromSearch: true, citationKey: 'Li2024', doi: '10.1016/j.future.2024.01.045', relevance: 'Kafka untuk sistem pendidikan real-time' },
+    ];
+    for (const j of journalDefs) {
+      await prisma.thesisJournal.upsert({ where: { id: j.id }, update: {}, create: j });
+    }
+
+    // Bimbingan logs
+    const bimbinganDefs = [
+      { id: 'bim-zin-001', thesisId, date: new Date('2025-10-15'), supervisor: '1', topic: 'Proposal dan ruang lingkup penelitian', feedback: 'Proposal sudah cukup baik. Perlu perjelas batasan masalah terkait jumlah microservices yang akan diimplementasi.', actionItems: JSON.stringify(['Revisi batasan masalah', 'Tambah 2 referensi terkait Kafka']), status: 'done' },
+      { id: 'bim-zin-002', thesisId, date: new Date('2025-11-20'), supervisor: '1', topic: 'Review BAB II - Tinjauan Pustaka', feedback: 'Tinjauan pustaka sudah komprehensif. Tambahkan perbandingan dengan RabbitMQ dan AWS SQS untuk memperkuat justifikasi pemilihan Kafka.', actionItems: JSON.stringify(['Tambah perbandingan message broker', 'Update kerangka pemikiran']), status: 'done' },
+      { id: 'bim-zin-003', thesisId, date: new Date('2026-01-10'), supervisor: '2', topic: 'Desain arsitektur dan metodologi', feedback: 'Desain arsitektur sudah solid. Pastikan event schema menggunakan Avro atau Protobuf untuk backward compatibility.', actionItems: JSON.stringify(['Implementasi Avro schema registry', 'Dokumentasi event catalog']), status: 'done' },
+      { id: 'bim-zin-004', thesisId, date: new Date('2026-03-05'), supervisor: '1', topic: 'Progress implementasi dan pengujian awal', feedback: 'Implementasi berjalan baik. Tambahkan chaos engineering test untuk validasi fault tolerance.', actionItems: JSON.stringify(['Setup Chaos Monkey', 'Jalankan failure injection tests']), status: 'done' },
+      { id: 'bim-zin-005', thesisId, date: new Date('2026-05-20'), supervisor: '1', topic: 'Review BAB IV dan persiapan sidang', feedback: 'Hasil dan pembahasan sudah lengkap. Perbaiki format tabel dan tambahkan grafik visualisasi hasil load testing.', actionItems: JSON.stringify(['Tambah grafik JMeter', 'Perbaiki format tabel performa']), status: 'done' },
+    ];
+    for (const b of bimbinganDefs) {
+      await prisma.thesisBimbingan.upsert({ where: { id: b.id }, update: {}, create: b });
+    }
+
+    // Bibliographies
+    const bibDefs = [
+      { id: 'bib-zin-001', thesisId, rawEntry: 'Newman, S. (2021). Building Microservices: Designing Fine-Grained Systems (2nd ed.). O\'Reilly Media.', citationKey: 'Newman2021', entryType: 'book' },
+      { id: 'bib-zin-002', thesisId, rawEntry: 'Richardson, C. (2018). Microservices Patterns: With Examples in Java. Manning Publications.', citationKey: 'Richardson2018', entryType: 'book' },
+      { id: 'bib-zin-003', thesisId, rawEntry: 'Bellemare, A. (2020). Building Event-Driven Microservices: Leveraging Organizational Data at Scale. O\'Reilly Media.', citationKey: 'Bellemare2020', entryType: 'book' },
+      { id: 'bib-zin-004', thesisId, rawEntry: 'Narkhede, N., Shapira, G., & Palino, T. (2017). Kafka: The Definitive Guide: Real-Time Data and Stream Processing at Scale. O\'Reilly Media.', citationKey: 'Narkhede2017', entryType: 'book' },
+      { id: 'bib-zin-005', thesisId, rawEntry: 'Zhang, Y., Li, W., & Chen, H. (2022). Performance evaluation of microservices architecture for MOOC platforms. Journal of Cloud Computing, 11(1), 1-15. https://doi.org/10.1186/s13677-022-00312-x', citationKey: 'Zhang2022', entryType: 'article' },
+      { id: 'bib-zin-006', thesisId, rawEntry: 'Kumar, R., & Singh, A. (2023). Comparative analysis of REST and event-driven approaches in campus management systems. IEEE Access, 11, 23456-23470. https://doi.org/10.1109/ACCESS.2023.3241567', citationKey: 'Kumar2023', entryType: 'article' },
+      { id: 'bib-zin-007', thesisId, rawEntry: 'Li, X., Wang, Q., & Zhou, M. (2024). Scalable real-time education systems using Apache Kafka. Future Generation Computer Systems, 152, 234-248. https://doi.org/10.1016/j.future.2024.01.045', citationKey: 'Li2024', entryType: 'articlee' },
+    ];
+    for (const b of bibDefs) {
+      await prisma.thesisBibliography.upsert({ where: { id: b.id }, update: {}, create: b });
+    }
+
+    // Community interactions (likes, comments)
+    await prisma.thesisLike.upsert({
+      where: { userId_thesisId: { thesisId, userId: userDefs[0].id } },
+      update: {}, create: { thesisId, userId: userDefs[0].id },
+    });
+    await prisma.thesisLike.upsert({
+      where: { userId_thesisId: { thesisId, userId: userDefs[1].id } },
+      update: {}, create: { thesisId, userId: userDefs[1].id },
+    });
+    await prisma.thesisLike.upsert({
+      where: { userId_thesisId: { thesisId, userId: userDefs[3].id } },
+      update: {}, create: { thesisId, userId: userDefs[3].id },
+    });
+
+    await prisma.thesisComment.upsert({
+      where: { id: 'comment-zin-001' },
+      update: {},
+      create: { id: 'comment-zin-001', thesisId, userId: userDefs[0].id, content: 'Arsitektur yang sangat menarik! Apakah ada pertimbangan untuk menggunakan gRPC selain Kafka untuk synchronous calls antar service?' },
+    });
+    await prisma.thesisComment.upsert({
+      where: { id: 'comment-zin-002' },
+      update: {},
+      create: { id: 'comment-zin-002', thesisId, userId: userDefs[1].id, content: 'Hasil load testing-nya impressive. Saya juga sedang riset microservices untuk skripsi saya. Boleh tanya-tanya lebih lanjut?' },
+    });
+
+    console.log('  ✅ Skripsweet dummy data seeded (complete thesis for zinedine dev)');
   }
 
   console.log('\n🎉 Seeding selesai!');

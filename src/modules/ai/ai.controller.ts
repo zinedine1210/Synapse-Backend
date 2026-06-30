@@ -87,4 +87,38 @@ export class AiController {
     await this.aiUsage.checkAndRecord(user.id, 'ai_digitalization');
     return { questions: await this.aiService.extractQuestionsFromImage(body.base64, body.mimeType) };
   }
+
+  /**
+   * POST /api/v1/ai/editor-assist
+   * Inline AI assist for rich text editor — general purpose text generation/editing
+   */
+  @Post('editor-assist')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  async editorAssist(
+    @Body() body: { prompt: string; context?: string; action?: string },
+    @GetUser() user: User,
+  ) {
+    await this.aiUsage.checkAndRecord(user.id, 'ai_digitalization');
+
+    const actionPrompts: Record<string, string> = {
+      explain: 'Jelaskan teks berikut dengan bahasa yang mudah dipahami mahasiswa Indonesia:\n\n',
+      summarize: 'Buat ringkasan singkat dan padat dari teks berikut dalam bahasa Indonesia:\n\n',
+      improve: 'Perbaiki dan tingkatkan kualitas tulisan berikut (tata bahasa, kejelasan, struktur) dalam bahasa Indonesia. Kembalikan HANYA teks yang sudah diperbaiki, tanpa penjelasan tambahan:\n\n',
+      continue: 'Lanjutkan tulisan berikut secara natural dalam bahasa Indonesia, pertahankan gaya dan konteks yang sama:\n\n',
+      translate_en: 'Terjemahkan teks berikut ke bahasa Inggris. Kembalikan HANYA hasil terjemahan:\n\n',
+      translate_id: 'Terjemahkan teks berikut ke bahasa Indonesia. Kembalikan HANYA hasil terjemahan:\n\n',
+    };
+
+    let finalPrompt: string;
+    if (body.action && actionPrompts[body.action]) {
+      finalPrompt = actionPrompts[body.action] + (body.context || body.prompt);
+    } else {
+      finalPrompt = body.context
+        ? `Konteks tulisan user:\n"""${body.context}"""\n\nPermintaan user: ${body.prompt}\n\nBerikan jawaban yang bisa langsung dimasukkan ke editor. Gunakan format HTML sederhana (p, ul, ol, strong, em, h2, h3, blockquote, code) jika perlu. Jangan beri penjelasan meta, langsung jawab.`
+        : `${body.prompt}\n\nBerikan jawaban yang bisa langsung dimasukkan ke editor. Gunakan format HTML sederhana (p, ul, ol, strong, em, h2, h3, blockquote, code) jika perlu. Jangan beri penjelasan meta, langsung jawab.`;
+    }
+
+    const result = await this.aiService.generateText(finalPrompt);
+    return { content: result };
+  }
 }

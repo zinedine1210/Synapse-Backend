@@ -149,6 +149,11 @@ export class AddCommentDto {
   @IsString() content: string;
 }
 
+export class CreateRevisionDto {
+  @IsString() note: string;
+  @IsOptional() @IsInt() round?: number;
+}
+
 export class ExploreQueryDto {
   @IsOptional() @IsString() query?: string;
   @IsOptional() @IsString() tag?: string;

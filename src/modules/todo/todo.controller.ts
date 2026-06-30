@@ -30,11 +30,12 @@ export class TodoController {
     @Query('status') status?: string,
     @Query('priority') priority?: string,
     @Query('category') category?: string,
+    @Query('type') type?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.svc.getAll(user.id, {
-      status, priority, category,
+      status, priority, category, type,
       page: page ? parseInt(page) : 1,
       limit: limit ? Math.min(parseInt(limit), 100) : 10,
     });
@@ -45,9 +46,39 @@ export class TodoController {
     return this.svc.getStats(user.id);
   }
 
+  @Get('agenda')
+  getAgenda(@GetUser() user: User, @Query('days') days?: string) {
+    return this.svc.getAgenda(user.id, days ? Math.min(parseInt(days), 30) : 7);
+  }
+
+  @Post('check-conflicts')
+  checkConflicts(
+    @GetUser() user: User,
+    @Body('date') date: string,
+    @Body('startTime') startTime: string,
+    @Body('endTime') endTime: string,
+    @Body('excludeId') excludeId?: string,
+  ) {
+    return this.svc.checkConflicts(user.id, date, startTime, endTime, excludeId);
+  }
+
   @Get('unified-timeline')
   getUnifiedTimeline(@GetUser() user: User) {
     return this.svc.getUnifiedTimeline(user.id);
+  }
+
+  @Get('shared/with-me')
+  getSharedWithMe(@GetUser() user: User) {
+    return this.svc.getSharedWithMe(user.id);
+  }
+
+  @Post('shared/:shareId/respond')
+  respondToShare(
+    @GetUser() user: User,
+    @Param('shareId', ParseUUIDPipe) shareId: string,
+    @Body('accept') accept: boolean,
+  ) {
+    return this.svc.respondToShare(user.id, shareId, accept);
   }
 
   @Patch('reorder')
@@ -168,5 +199,56 @@ export class TodoController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.svc.deleteReminder(user.id, id);
+  }
+
+  // ==============================
+  // Sync & Bulk AI endpoints
+  // ==============================
+
+  @Post('sync-class-tasks')
+  syncClassTasks(@GetUser() user: User) {
+    return this.svc.syncClassTasks(user.id);
+  }
+
+  @Post('parse-image')
+  parseImage(
+    @GetUser() user: User,
+    @Body('imageBase64') imageBase64: string,
+    @Body('mimeType') mimeType: string,
+  ) {
+    return this.svc.parseBulkImage(user.id, imageBase64, mimeType);
+  }
+
+  @Post('bulk/create')
+  bulkCreate(@GetUser() user: User, @Body('items') items: any[]) {
+    return this.svc.bulkCreate(user.id, items);
+  }
+
+  // ==============================
+  // Sharing endpoints
+  // ==============================
+
+  @Post(':id/share')
+  shareTodo(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('email') email: string,
+    @Body('role') role?: string,
+  ) {
+    return this.svc.shareTodo(user.id, id, email, role || 'viewer');
+  }
+
+  @Get(':id/shared-users')
+  getSharedUsers(@GetUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.getSharedUsers(user.id, id);
+  }
+
+  @Delete(':id/share/:targetUserId')
+  unshareTodo(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('targetUserId', ParseUUIDPipe) targetUserId: string,
+  ) {
+    return this.svc.unshareTodo(user.id, id, targetUserId);
   }
 }

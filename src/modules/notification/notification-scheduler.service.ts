@@ -176,6 +176,125 @@ export class NotificationSchedulerService {
         );
       }
 
+      // 3c. Events today — push reminder for scheduled events
+      const todayEvents = await this.prisma.personalTodo.findMany({
+        where: {
+          type: 'event',
+          status: 'pending',
+          dueDate: { gte: today, lt: tomorrow },
+        },
+        select: { userId: true, title: true, startTime: true, endTime: true, location: true, eventType: true },
+      });
+
+      const eventsByUser: Record<string, typeof todayEvents> = {};
+      for (const e of todayEvents) {
+        if (!eventsByUser[e.userId]) eventsByUser[e.userId] = [];
+        eventsByUser[e.userId].push(e);
+      }
+
+      for (const [userId, events] of Object.entries(eventsByUser)) {
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId },
+        });
+        if (pref && !pref.deadlineReminder) continue;
+
+        if (events.length === 1) {
+          const e = events[0];
+          const timeStr = e.startTime ? ` jam ${e.startTime}${e.endTime ? `-${e.endTime}` : ''}` : '';
+          const locStr = e.location ? ` di ${e.location}` : '';
+          await this.notificationService.createNotification(
+            userId,
+            '📅 Jadwal Hari Ini',
+            `"${e.title}"${timeStr}${locStr}`,
+            { category: 'todo', actionUrl: '/todos' },
+          );
+        } else {
+          const preview = events.slice(0, 3).map(e => e.title).join(', ');
+          await this.notificationService.createNotification(
+            userId,
+            '📅 Jadwal Hari Ini',
+            `${events.length} jadwal: ${preview}${events.length > 3 ? '...' : ''}`,
+            { category: 'todo', actionUrl: '/todos' },
+          );
+        }
+      }
+
+      // 3d. Events tomorrow — advance notice
+      const tomorrowEvents = await this.prisma.personalTodo.findMany({
+        where: {
+          type: 'event',
+          status: 'pending',
+          dueDate: { gte: tomorrow, lt: dayAfterTomorrow },
+        },
+        select: { userId: true, title: true, startTime: true, location: true, eventType: true },
+      });
+
+      const evtTmrByUser: Record<string, typeof tomorrowEvents> = {};
+      for (const e of tomorrowEvents) {
+        if (!evtTmrByUser[e.userId]) evtTmrByUser[e.userId] = [];
+        evtTmrByUser[e.userId].push(e);
+      }
+
+      for (const [userId, events] of Object.entries(evtTmrByUser)) {
+        const pref = await this.prisma.notificationPreference.findUnique({
+          where: { userId },
+        });
+        if (pref && !pref.deadlineReminder) continue;
+
+        const preview = events.slice(0, 3).map(e => e.title).join(', ');
+        await this.notificationService.createNotification(
+          userId,
+          '📅 Jadwal Besok',
+          `${events.length} jadwal besok: ${preview}${events.length > 3 ? '...' : ''}`,
+          { category: 'todo', actionUrl: '/todos' },
+        );
+      }
+
+      // 3e. Holiday notification — check if today or tomorrow is a national holiday
+      const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const tomorrowDate = new Date(tomorrow);
+      const tomorrowKey = `${tomorrowDate.getFullYear()}-${String(tomorrowDate.getMonth() + 1).padStart(2, '0')}-${String(tomorrowDate.getDate()).padStart(2, '0')}`;
+
+      const HOLIDAYS: Record<string, string> = {
+        '2026-01-01': 'Tahun Baru', '2026-01-29': 'Tahun Baru Imlek',
+        '2026-03-20': 'Isra Mi\'raj', '2026-03-22': 'Hari Raya Nyepi',
+        '2026-03-29': 'Wafat Isa Almasih', '2026-04-03': 'Hari Raya Idul Fitri',
+        '2026-04-04': 'Hari Raya Idul Fitri', '2026-05-01': 'Hari Buruh',
+        '2026-05-07': 'Hari Raya Waisak', '2026-05-16': 'Kenaikan Isa Almasih',
+        '2026-06-01': 'Hari Lahir Pancasila', '2026-06-10': 'Hari Raya Idul Adha',
+        '2026-07-01': 'Tahun Baru Hijriah', '2026-08-17': 'Hari Kemerdekaan RI',
+        '2026-09-10': 'Maulid Nabi Muhammad', '2026-12-25': 'Hari Natal',
+      };
+
+      const todayHoliday = HOLIDAYS[todayKey];
+      const tomorrowHoliday = HOLIDAYS[tomorrowKey];
+
+      if (todayHoliday || tomorrowHoliday) {
+        const allUsersForHoliday = await this.prisma.user.findMany({
+          where: { role: 'USER' },
+          select: { id: true },
+        });
+
+        for (const u of allUsersForHoliday) {
+          if (todayHoliday) {
+            await this.notificationService.createNotification(
+              u.id,
+              '🇮🇩 Hari Libur Nasional',
+              `Hari ini ${todayHoliday}. Selamat menikmati libur!`,
+              { category: 'info', actionUrl: '/todos' },
+            );
+          }
+          if (tomorrowHoliday) {
+            await this.notificationService.createNotification(
+              u.id,
+              '🇮🇩 Besok Hari Libur',
+              `Besok ${tomorrowHoliday}. Pastikan semua tugas sudah selesai!`,
+              { category: 'info', actionUrl: '/todos' },
+            );
+          }
+        }
+      }
+
       // 4. Idle user reminder (3+ days without transaction)
       const threeDaysAgo = new Date(now.getTime() - 3 * 86400000);
       const allUsers = await this.prisma.user.findMany({
@@ -216,6 +335,56 @@ export class NotificationSchedulerService {
       this.logger.log('Morning notifications completed.');
     } catch (error) {
       this.logger.error('Failed to send morning notifications', error);
+    }
+  }
+
+  /**
+   * Every 5 minutes — Check and fire TodoReminder records.
+   * Handles reminderMinutes-based reminders for todo/event items.
+   */
+  @Cron('*/5 * * * *')
+  async checkTodoReminders() {
+    try {
+      const now = new Date();
+      // Find unsent reminders that are due
+      const dueReminders = await this.prisma.todoReminder.findMany({
+        where: {
+          sent: false,
+          remindAt: { lte: now },
+        },
+        include: {
+          todo: { select: { userId: true, title: true, type: true, dueDate: true, dueTime: true, startTime: true, location: true, eventType: true } },
+        },
+        take: 100, // batch limit
+      });
+
+      if (dueReminders.length === 0) return;
+
+      for (const reminder of dueReminders) {
+        const { todo } = reminder;
+        const isEvent = todo.type === 'event';
+        const timeStr = isEvent && todo.startTime ? ` jam ${todo.startTime}` : todo.dueTime ? ` jam ${todo.dueTime}` : '';
+        const locStr = isEvent && todo.location ? ` di ${todo.location}` : '';
+
+        await this.notificationService.createNotification(
+          todo.userId,
+          isEvent ? '⏰ Pengingat Jadwal' : '⏰ Pengingat Todo',
+          `"${todo.title}"${timeStr}${locStr}`,
+          { category: 'todo', actionUrl: '/todos' },
+        );
+
+        // Mark as sent
+        await this.prisma.todoReminder.update({
+          where: { id: reminder.id },
+          data: { sent: true },
+        });
+      }
+
+      if (dueReminders.length > 0) {
+        this.logger.log(`Sent ${dueReminders.length} todo reminders.`);
+      }
+    } catch (error) {
+      this.logger.error('Failed to check todo reminders', error);
     }
   }
 
