@@ -1,12 +1,15 @@
 import { Controller, Get, Post, Delete, Body, Param, UseGuards, ParseUUIDPipe } from '@nestjs/common';
 import { GroupService } from './group.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 import { CreateGroupDto, AutoGenerateGroupDto, AddMemberDto } from './dto/group.dto';
 
 @Controller('group')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, FeatureGuard)
+@RequireFeature('group')
 export class GroupController {
   constructor(private readonly svc: GroupService) {}
 

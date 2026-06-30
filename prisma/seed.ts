@@ -59,14 +59,14 @@ async function main() {
       email: 'zinedine.superadmin@gmail.com',
       fullName: 'Zinedine Superadmin',
       role: Role.SUPERADMIN,
-      plan: 'PRO',
+      plan: 'SULTAN',
     },
     create: {
       id: superadminId,
       email: 'zinedine.superadmin@gmail.com',
       fullName: 'Zinedine Superadmin',
       role: Role.SUPERADMIN,
-      plan: 'PRO',
+      plan: 'SULTAN',
     },
   });
 
@@ -78,16 +78,16 @@ async function main() {
 
     // ── USERS ──
     const userDefs = [
-      { id: uid('user0001', 1), email: 'budi@demo.com', fullName: 'Budi Santoso', plan: 'PRO' },
-      { id: uid('user0002', 2), email: 'siti@demo.com', fullName: 'Siti Nurhaliza', plan: 'PRO' },
-      { id: uid('user0003', 3), email: 'ahmad@demo.com', fullName: 'Ahmad Fauzi', plan: 'FREE' },
-      { id: uid('user0004', 4), email: 'dewi@demo.com', fullName: 'Dewi Lestari', plan: 'PRO' },
-      { id: uid('user0005', 5), email: 'rudi@demo.com', fullName: 'Rudi Hartono', plan: 'FREE' },
-      { id: uid('user0006', 6), email: 'nina@demo.com', fullName: 'Nina Agustina', plan: 'PRO' },
-      { id: uid('user0007', 7), email: 'eko@demo.com', fullName: 'Eko Prasetyo', plan: 'FREE' },
-      { id: uid('user0008', 8), email: 'maya@demo.com', fullName: 'Maya Sari', plan: 'PRO' },
-      { id: uid('user0009', 9), email: 'doni@demo.com', fullName: 'Doni Wijaya', plan: 'FREE' },
-      { id: uid('user0010', 10), email: 'ratna@demo.com', fullName: 'Ratna Dewi', plan: 'PRO' },
+      { id: uid('user0001', 1), email: 'budi@demo.com', fullName: 'Budi Santoso', plan: 'FULL_POWER' },
+      { id: uid('user0002', 2), email: 'siti@demo.com', fullName: 'Siti Nurhaliza', plan: 'HUSTLER' },
+      { id: uid('user0003', 3), email: 'ahmad@demo.com', fullName: 'Ahmad Fauzi', plan: 'NEWBIE' },
+      { id: uid('user0004', 4), email: 'dewi@demo.com', fullName: 'Dewi Lestari', plan: 'FULL_POWER' },
+      { id: uid('user0005', 5), email: 'rudi@demo.com', fullName: 'Rudi Hartono', plan: 'NEWBIE' },
+      { id: uid('user0006', 6), email: 'nina@demo.com', fullName: 'Nina Agustina', plan: 'HUSTLER' },
+      { id: uid('user0007', 7), email: 'eko@demo.com', fullName: 'Eko Prasetyo', plan: 'NEWBIE' },
+      { id: uid('user0008', 8), email: 'maya@demo.com', fullName: 'Maya Sari', plan: 'FULL_POWER' },
+      { id: uid('user0009', 9), email: 'doni@demo.com', fullName: 'Doni Wijaya', plan: 'NEWBIE' },
+      { id: uid('user0010', 10), email: 'ratna@demo.com', fullName: 'Ratna Dewi', plan: 'SULTAN' },
     ];
 
     for (const u of userDefs) {

@@ -50,7 +50,7 @@ model User {
   fullName               String
   avatarUrl              String?
   role                   Role                        @default(USER)
-  plan                   String                      @default("FREE")
+  plan                   String                      @default("NEWBIE")
   planExpiresAt          DateTime?
   dataRetentionDeadline  DateTime?
   uploadCount            Int                         @default(0)

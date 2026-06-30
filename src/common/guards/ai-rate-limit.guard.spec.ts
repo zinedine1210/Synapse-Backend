@@ -46,7 +46,7 @@ describe('AiRateLimitGuard', () => {
     const user = {
       id: 'user-2',
       role: 'USER',
-      pricingPlan: { aiRequestLimit: 3, name: 'FREE' },
+      pricingPlan: { aiRequestLimit: 3, name: 'NEWBIE' },
     };
     const ctx = createMockContext(user);
 
@@ -66,7 +66,7 @@ describe('AiRateLimitGuard', () => {
       expect(response.limit).toBe(3);
       expect(response.used).toBe(3);
       expect(response.remaining).toBe(0);
-      expect(response.plan).toBe('FREE');
+      expect(response.plan).toBe('NEWBIE');
     }
   });
 
@@ -85,7 +85,7 @@ describe('AiRateLimitGuard', () => {
     const user = {
       id: 'user-4',
       role: 'USER',
-      pricingPlan: { aiRequestLimit: 1, name: 'FREE' },
+      pricingPlan: { aiRequestLimit: 1, name: 'NEWBIE' },
     };
     const ctx = createMockContext(user);
 
@@ -104,12 +104,12 @@ describe('AiRateLimitGuard', () => {
     const user1 = {
       id: 'user-a',
       role: 'USER',
-      pricingPlan: { aiRequestLimit: 1, name: 'FREE' },
+      pricingPlan: { aiRequestLimit: 1, name: 'NEWBIE' },
     };
     const user2 = {
       id: 'user-b',
       role: 'USER',
-      pricingPlan: { aiRequestLimit: 1, name: 'FREE' },
+      pricingPlan: { aiRequestLimit: 1, name: 'NEWBIE' },
     };
 
     await guard.canActivate(createMockContext(user1));

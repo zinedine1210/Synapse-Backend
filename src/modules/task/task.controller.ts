@@ -2,12 +2,15 @@ import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, ParseUUID
 import { Throttle } from '@nestjs/throttler';
 import { TaskService } from './task.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
 import { FileSizeGuard } from '../../common/guards/file-size.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 
 @Controller('task')
-@UseGuards(AuthGuard, FileSizeGuard)
+@UseGuards(AuthGuard, FeatureGuard, FileSizeGuard)
+@RequireFeature('task')
 export class TaskController {
   constructor(private readonly svc: TaskService) {}
 

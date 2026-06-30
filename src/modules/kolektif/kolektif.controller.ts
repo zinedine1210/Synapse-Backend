@@ -1,12 +1,15 @@
 import { Controller, Get, Post, Delete, Body, Param, UseGuards, ParseUUIDPipe, Patch } from '@nestjs/common';
 import { KolektifService } from './kolektif.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 import { CreateKolektifDto, SetTargetDto, AddTransactionDto } from './dto/kolektif.dto';
 
 @Controller('kolektif')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, FeatureGuard)
+@RequireFeature('kolektif')
 export class KolektifController {
   constructor(private readonly svc: KolektifService) {}
 

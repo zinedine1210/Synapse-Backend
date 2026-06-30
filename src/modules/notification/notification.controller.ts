@@ -15,11 +15,14 @@ import {
 import { NotificationService } from './notification.service';
 import { WebPushService } from './web-push.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
+import { FeatureGuard } from '../../common/guards/feature.guard';
+import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 
 @Controller('notifications')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, FeatureGuard)
+@RequireFeature('notification')
 export class NotificationController {
   constructor(
     private readonly notificationService: NotificationService,
