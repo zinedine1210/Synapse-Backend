@@ -208,7 +208,11 @@ export class TodoService {
     const [rawData] = await Promise.all([
       this.prisma.personalTodo.findMany({
         where,
-        include: { reminders: true, subtasks: { orderBy: { createdAt: 'asc' } } },
+        include: {
+          reminders: true,
+          subtasks: { orderBy: { createdAt: 'asc' } },
+          sharedWith: { include: { user: { select: { id: true, fullName: true, avatarUrl: true } } } },
+        },
         orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,

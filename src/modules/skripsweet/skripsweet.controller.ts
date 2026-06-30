@@ -225,6 +225,27 @@ export class SkripsweetController {
     return this.svc.restoreChapterVersion(user.id, id, chapterId, versionId);
   }
 
+  @Delete(':id/chapters/:chapterId/versions/:versionId')
+  deleteChapterVersion(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+  ) {
+    return this.svc.deleteChapterVersion(user.id, id, chapterId, versionId);
+  }
+
+  @Patch(':id/chapters/:chapterId/versions/:versionId')
+  updateChapterVersionLabel(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+    @Body() dto: { label: string },
+  ) {
+    return this.svc.updateChapterVersionLabel(user.id, id, chapterId, versionId, dto.label);
+  }
+
   @Post(':id/chapters/:chapterId/feedback')
   getChapterFeedback(
     @GetUser() user: User,

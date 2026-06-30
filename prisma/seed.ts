@@ -21,13 +21,13 @@ async function main() {
     // Keuangan (basic)
     'duit_tracker', 'duit_tracker_bills', 'duit_tracker_debts',
     // Produktivitas (basic)
-    'todo_list', 'todo_categories', 'qna_public',
+    'todo_list', 'todo_categories', 'todo_events', 'qna_public',
     // Gamifikasi & UX (basic)
     'gamification', 'notification', 'quick_action',
     // Fun & Engagement (basic)
     'virtual_pet', 'streak_calendar', 'quiz_keuangan',
     // Skripsi (basic)
-    'skripsweet',
+    'skripsweet', 'skripsweet_versions', 'skripsweet_docx_export',
   ];
 
   const STARTER_FEATURES = [
@@ -45,6 +45,7 @@ async function main() {
     'si_bawel', 'split_bill', 'receipt_scanner',
     // Produktivitas (mid)
     'todo_list', 'todo_calendar', 'todo_categories', 'todo_subtasks', 'todo_recurring',
+    'todo_events', 'todo_shared', 'todo_reminders', 'todo_bulk', 'todo_ai_parse', 'todo_sync_class',
     'qna_public', 'qna_voting', 'qna_ai_answer',
     'food_recommend',
     // Gamifikasi & UX (mid)
@@ -53,7 +54,8 @@ async function main() {
     // Fun & Engagement (mid)
     'virtual_pet', 'streak_calendar', 'quiz_keuangan', 'profile_card',
     // Skripsi (mid)
-    'skripsweet', 'skripsweet_ai_chat',
+    'skripsweet', 'skripsweet_ai_chat', 'skripsweet_versions', 'skripsweet_docx_export',
+    'skripsweet_revisions', 'skripsweet_community', 'skripsweet_format',
   ];
 
   const PRO_FEATURES = [
@@ -72,6 +74,7 @@ async function main() {
     'si_bawel', 'si_bawel_memory', 'split_bill', 'receipt_scanner',
     // Produktivitas (full)
     'todo_list', 'todo_calendar', 'todo_timeline', 'todo_categories', 'todo_subtasks', 'todo_recurring',
+    'todo_events', 'todo_shared', 'todo_reminders', 'todo_bulk', 'todo_ai_parse', 'todo_sync_class',
     'qna_public', 'qna_voting', 'qna_ai_answer',
     'food_recommend',
     // Gamifikasi & UX (full)
@@ -84,6 +87,7 @@ async function main() {
     'dashboard_class_comparison', 'dashboard_trending_qna',
     // Skripsi (full)
     'skripsweet', 'skripsweet_ai_chat', 'skripsweet_journal_search', 'skripsweet_bibliography',
+    'skripsweet_versions', 'skripsweet_docx_export', 'skripsweet_revisions', 'skripsweet_community', 'skripsweet_format',
   ];
 
   // ── FREE ──

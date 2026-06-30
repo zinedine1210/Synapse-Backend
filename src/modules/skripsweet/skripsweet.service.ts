@@ -387,6 +387,21 @@ Balas dalam JSON SAJA (tanpa markdown code block), dengan format:
     });
   }
 
+  async deleteChapterVersion(userId: string, thesisId: string, chapterId: string, versionId: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    const version = await this.prisma.chapterVersion.findUnique({ where: { id: versionId } });
+    if (!version || version.chapterId !== chapterId) throw new NotFoundException('Versi tidak ditemukan');
+    await this.prisma.chapterVersion.delete({ where: { id: versionId } });
+    return { deleted: true };
+  }
+
+  async updateChapterVersionLabel(userId: string, thesisId: string, chapterId: string, versionId: string, label: string) {
+    await this.getThesisOrFail(userId, thesisId);
+    const version = await this.prisma.chapterVersion.findUnique({ where: { id: versionId } });
+    if (!version || version.chapterId !== chapterId) throw new NotFoundException('Versi tidak ditemukan');
+    return this.prisma.chapterVersion.update({ where: { id: versionId }, data: { label } });
+  }
+
   async deleteChapter(userId: string, thesisId: string, chapterId: string) {
     await this.getThesisOrFail(userId, thesisId);
     await this.prisma.thesisChapter.delete({ where: { id: chapterId } });
