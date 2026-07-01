@@ -6,6 +6,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { SkripsweetService } from './skripsweet.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
+import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
@@ -98,7 +99,7 @@ export class SkripsweetController {
   }
 
   @Post(':id/format/upload')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file'))
   uploadFormatFile(
     @GetUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
@@ -328,7 +329,8 @@ export class SkripsweetController {
   }
 
   @Post(':id/bimbingan/:bimbinganId/upload')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseGuards(FileSizeGuard)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
   uploadBimbinganAttachment(
     @GetUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,

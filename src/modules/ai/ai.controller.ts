@@ -13,14 +13,13 @@ import { AiUsageService } from '../../common/services/ai-usage.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
 import { AiRateLimitGuard } from '../../common/guards/ai-rate-limit.guard';
-import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
 import { Base64ImageDto } from './dto/base64-image.dto';
 
 @Controller('ai')
-@UseGuards(AuthGuard, FeatureGuard, AiRateLimitGuard, FileSizeGuard)
+@UseGuards(AuthGuard, FeatureGuard, AiRateLimitGuard)
 export class AiController {
   constructor(
     private readonly aiService: AiService,
@@ -34,7 +33,7 @@ export class AiController {
   @Post('parse-schedule')
   @RequireFeature('schedule_parser')
   @Throttle({ default: { ttl: 60000, limit: 5 } })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file'))
   async parseSchedule(@UploadedFile() file: Express.Multer.File, @GetUser() user: User) {
     await this.aiUsage.checkAndRecord(user.id, 'ai_digitalization');
     return this.aiService.parseSchedule(file);

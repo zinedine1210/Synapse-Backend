@@ -3,24 +3,35 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { PrismaService } from '../../database/prisma.service';
 import { GamificationService } from '../gamification/gamification.service';
 import { NotificationService } from '../notification/notification.service';
 import { AiService } from '../ai/ai.service';
 import { CreateQuestionDto, CreateAnswerDto, UpdateQuestionDto } from './dto/qna.dto';
+import { validateAnswer } from './anti-spam.helpers';
 
 @Injectable()
 export class QnaService {
   private readonly logger = new Logger(QnaService.name);
+  private readonly supabase: SupabaseClient;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly gamificationService: GamificationService,
     private readonly notificationService: NotificationService,
     private readonly aiService: AiService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.supabase = createClient(
+      this.configService.get<string>('SUPABASE_URL')!,
+      this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+  }
 
   private generateSlug(title: string): string {
     return (
@@ -62,10 +73,12 @@ export class QnaService {
     // Award XP: +5 for asking a question
     await this.gamificationService.awardXp(userId, 'qna_question', `Bertanya: ${dto.title}`);
 
-    // Generate AI answer asynchronously (fire-and-forget)
-    this.generateAiAnswer(question.id, dto.title, dto.body).catch(err =>
-      this.logger.warn(`AI answer generation failed for ${question.id}: ${err.message}`),
-    );
+    // Generate AI answer asynchronously (fire-and-forget) — only if requested
+    if (dto.requestAiAnswer !== false) {
+      this.generateAiAnswer(question.id, dto.title, dto.body).catch(err =>
+        this.logger.warn(`AI answer generation failed for ${question.id}: ${err.message}`),
+      );
+    }
 
     return question;
   }
@@ -94,6 +107,7 @@ Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban
     category?: string;
     status?: string;
     search?: string;
+    sort?: string;
     page?: number;
     limit?: number;
   }) {
@@ -110,6 +124,15 @@ Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban
       ];
     }
 
+    // Sort options
+    let orderBy: any = { createdAt: 'desc' };
+    if (query.sort === 'views') orderBy = { viewCount: 'desc' };
+    else if (query.sort === 'upvotes') orderBy = { upvotes: 'desc' };
+    else if (query.sort === 'unanswered') {
+      where.status = 'open';
+      orderBy = { createdAt: 'desc' };
+    }
+
     const [questions, total] = await Promise.all([
       this.prisma.qnaQuestion.findMany({
         where,
@@ -117,7 +140,7 @@ Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban
           user: { select: { id: true, fullName: true, avatarUrl: true } },
           _count: { select: { answers: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -133,7 +156,7 @@ Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban
     };
   }
 
-  async getBySlug(slug: string) {
+  async getBySlug(slug: string, userId?: string) {
     const question = await this.prisma.qnaQuestion.findUnique({
       where: { slug },
       include: {
@@ -159,7 +182,42 @@ Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban
       question.tags,
     );
 
-    return { ...question, relatedQuestions };
+    // Fetch user-specific state (bookmark, question vote, answer votes)
+    let isBookmarked = false;
+    let hasVotedQuestion = false;
+    let upvotedAnswerIds: string[] = [];
+
+    if (userId) {
+      const [bookmark, questionVote, answerVotes] = await Promise.all([
+        this.prisma.qnaBookmark.findUnique({
+          where: { userId_questionId: { userId, questionId: question.id } },
+        }),
+        this.prisma.qnaQuestionVote.findUnique({
+          where: { userId_questionId: { userId, questionId: question.id } },
+        }),
+        this.prisma.qnaVote.findMany({
+          where: { userId, answerId: { in: question.answers.map(a => a.id) } },
+          select: { answerId: true },
+        }),
+      ]);
+      isBookmarked = !!bookmark;
+      hasVotedQuestion = !!questionVote;
+      upvotedAnswerIds = answerVotes.map(v => v.answerId);
+    }
+
+    // Annotate answers with hasUpvoted
+    const annotatedAnswers = question.answers.map(a => ({
+      ...a,
+      hasUpvoted: upvotedAnswerIds.includes(a.id),
+    }));
+
+    return {
+      ...question,
+      answers: annotatedAnswers,
+      relatedQuestions,
+      isBookmarked,
+      hasVotedQuestion,
+    };
   }
 
   /**
@@ -249,11 +307,19 @@ Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban
     });
     if (!question) throw new NotFoundException('Pertanyaan tidak ditemukan.');
 
+    // Anti-spam validation
+    const plainText = dto.body.replace(/<[^>]+>/g, '').trim();
+    const spamCheck = validateAnswer(plainText);
+    if (!spamCheck.valid) {
+      throw new BadRequestException(spamCheck.reason);
+    }
+
     const answer = await this.prisma.qnaAnswer.create({
       data: {
         questionId,
         userId,
         body: dto.body,
+        isAIFiltered: spamCheck.flagged,
       },
       include: {
         user: { select: { id: true, fullName: true, avatarUrl: true } },
@@ -551,6 +617,15 @@ Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban
     return this.prisma.qnaQuestion.delete({ where: { id: questionId } });
   }
 
+  async deleteAnswer(userId: string, answerId: string) {
+    const answer = await this.prisma.qnaAnswer.findUnique({
+      where: { id: answerId },
+    });
+    if (!answer) throw new NotFoundException('Jawaban tidak ditemukan.');
+    if (answer.userId !== userId) throw new ForbiddenException('Hanya pemilik jawaban yang dapat menghapus.');
+    return this.prisma.qnaAnswer.delete({ where: { id: answerId } });
+  }
+
   async getReputation(userId: string) {
     const rep = await this.prisma.userReputation.findUnique({
       where: { userId },
@@ -769,5 +844,46 @@ Berikan jawaban yang helpful dan akurat. Jika pertanyaan ambigu, berikan jawaban
         approvedCount: approvedMap.get(entry.userId) || 0,
       };
     });
+  }
+
+  // ─── File Upload ──────────────────────────────────────────────
+  async uploadFile(userId: string, file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('File tidak ditemukan.');
+
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (!allowed.includes(file.mimetype)) {
+      throw new BadRequestException('Hanya gambar (jpg/png/gif/webp) dan PDF yang diizinkan.');
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new BadRequestException('Ukuran file melebihi 10MB.');
+    }
+
+    const ext = file.originalname.split('.').pop();
+    const path = `qna/${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const bucketName = 'materials';
+
+    // Ensure bucket exists
+    const { error: bucketErr } = await this.supabase.storage.getBucket(bucketName);
+    if (bucketErr) {
+      await this.supabase.storage.createBucket(bucketName, { public: true });
+    }
+
+    const { error: uploadError } = await this.supabase.storage
+      .from(bucketName)
+      .upload(path, file.buffer, { contentType: file.mimetype });
+
+    if (uploadError) {
+      this.logger.error('QnA file upload error:', uploadError);
+      throw new BadRequestException('Gagal upload file: ' + uploadError.message);
+    }
+
+    const { data: urlData } = this.supabase.storage.from(bucketName).getPublicUrl(path);
+
+    return {
+      fileUrl: urlData.publicUrl,
+      fileName: file.originalname,
+      fileType: file.mimetype,
+      fileSizeBytes: file.size,
+    };
   }
 }

@@ -19,6 +19,10 @@ export class CreateQuestionDto {
   @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  requestAiAnswer?: boolean;
 }
 
 export class UpdateQuestionDto {

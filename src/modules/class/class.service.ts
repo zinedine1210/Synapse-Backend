@@ -702,8 +702,8 @@ export class ClassService implements OnModuleInit {
     });
     if (!member) throw new ForbiddenException('Bukan anggota kelas.');
 
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) throw new BadRequestException('Ukuran file maksimal 10MB.');
+    const maxSize = 100 * 1024 * 1024; // ceiling — per-plan limits enforced by FileSizeGuard
+    if (file.size > maxSize) throw new BadRequestException('Ukuran file melebihi batas maksimal.');
 
     const ext = file.originalname.split('.').pop() || 'bin';
     const storagePath = `tabs/${tab.classId}/${tabId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;

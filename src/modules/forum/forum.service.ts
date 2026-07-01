@@ -809,8 +809,9 @@ export class ForumService {
     if (!allowed.includes(file.mimetype)) {
       throw new BadRequestException('Hanya gambar (jpg/png/gif/webp) dan PDF yang diizinkan.');
     }
-    if (file.size > 10 * 1024 * 1024) {
-      throw new BadRequestException('Ukuran file maksimal 10MB.');
+    // File size is enforced by FileSizeGuard based on user's plan
+    if (file.size > 100 * 1024 * 1024) {
+      throw new BadRequestException('Ukuran file melebihi batas maksimal.');
     }
 
     const ext = file.originalname.split('.').pop();
@@ -845,7 +846,7 @@ export class ForumService {
     if (error || !data) {
       const { error: createError } = await this.supabase.storage.createBucket(bucketName, {
         public: true,
-        fileSizeLimit: 10 * 1024 * 1024, // 10MB
+        fileSizeLimit: 100 * 1024 * 1024, // 100MB — per-user limits enforced by FileSizeGuard
       });
       if (createError && !createError.message?.includes('already exists')) {
         this.logger.error(`Failed to create bucket '${bucketName}':`, createError);

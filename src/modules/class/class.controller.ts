@@ -19,6 +19,7 @@ import { CreateClassDto } from './dto/create-class.dto';
 import { UpdateClassDto } from './dto/update-class.dto';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { FeatureGuard } from '../../common/guards/feature.guard';
+import { FileSizeGuard } from '../../common/guards/file-size.guard';
 import { RequireFeature } from '../../common/decorators/require-feature.decorator';
 import { GetUser } from '../../common/decorators/get-user.decorator';
 import { User } from '@prisma/client';
@@ -192,6 +193,7 @@ export class ClassController {
   }
 
   @Post('custom-tabs/:tabId/files')
+  @UseGuards(FileSizeGuard)
   @UseInterceptors(FileInterceptor('file'))
   uploadCustomTabFile(
     @Param('tabId', ParseUUIDPipe) tabId: string,

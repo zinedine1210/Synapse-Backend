@@ -8,8 +8,11 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { QnaService } from './qna.service';
 import { AuthGuard } from '../../common/guards/auth.guard';
 import { OptionalAuthGuard } from '../../common/guards/optional-auth.guard';
@@ -41,6 +44,7 @@ export class QnaController {
     @Query('category') category?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('sort') sort?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -48,6 +52,7 @@ export class QnaController {
       category,
       status,
       search,
+      sort,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });
@@ -86,8 +91,8 @@ export class QnaController {
    */
   @Get('questions/:slug')
   @UseGuards(OptionalAuthGuard)
-  getBySlug(@Param('slug') slug: string) {
-    return this.svc.getBySlug(slug);
+  getBySlug(@Param('slug') slug: string, @GetUser() user?: User) {
+    return this.svc.getBySlug(slug, user?.id);
   }
 
   /**
@@ -166,6 +171,15 @@ export class QnaController {
     return this.svc.deleteQuestion(user.id, id);
   }
 
+  @Delete('answers/:id')
+  @UseGuards(AuthGuard)
+  deleteAnswer(
+    @GetUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.svc.deleteAnswer(user.id, id);
+  }
+
   @Patch('questions/:id')
   @UseGuards(AuthGuard)
   editQuestion(
@@ -234,5 +248,14 @@ export class QnaController {
   @UseGuards(OptionalAuthGuard)
   getWeeklyLeaderboard(@Query('limit') limit?: string) {
     return this.svc.getWeeklyLeaderboard(limit ? parseInt(limit) : 10);
+  }
+
+  // ─── File Upload ───────────────────────────────────────────────
+
+  @Post('upload')
+  @UseGuards(AuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  uploadFile(@GetUser() user: User, @UploadedFile() file: Express.Multer.File) {
+    return this.svc.uploadFile(user.id, file);
   }
 }

@@ -35,9 +35,9 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // ─── Body Size Limit ──────────────────────────────────────────────────────
-  // Dikurangi dari 50mb → 10mb untuk mencegah abuse via payload besar
-  app.use(json({ limit: '10mb' }));
-  app.use(urlencoded({ limit: '10mb', extended: true }));
+  // Upper bound for JSON payloads (base64 images expand ~33%); FileSizeGuard enforces per-plan limits
+  app.use(json({ limit: '150mb' }));
+  app.use(urlencoded({ limit: '150mb', extended: true }));
 
   // ─── Global Validation Pipe ───────────────────────────────────────────────
   // Mencegah SQL injection & data tidak valid masuk ke controller

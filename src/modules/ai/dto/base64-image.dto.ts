@@ -1,14 +1,12 @@
-import { IsString, IsNotEmpty, MaxLength, Matches } from 'class-validator';
+import { IsString, IsNotEmpty, Matches } from 'class-validator';
 
 /**
  * DTO untuk endpoint AI yang menerima base64 image.
- * Membatasi ukuran base64 agar tidak ada abuse dengan gambar raksasa.
- * Max ~5MB base64 (sekitar 3.75MB file asli)
+ * No file size limit — AI endpoints process images without storing them.
  */
 export class Base64ImageDto {
   @IsString()
   @IsNotEmpty({ message: 'base64 wajib diisi.' })
-  @MaxLength(5 * 1024 * 1024, { message: 'Ukuran gambar terlalu besar. Maksimal ~5MB.' })
   base64: string;
 
   @IsString()

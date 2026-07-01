@@ -117,8 +117,8 @@ export class TaskService {
         const ext = (data.imageMimeType.split('/')[1] || 'png').replace(/[^a-zA-Z0-9]/g, '');
         const fileName = `tasks/${classId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
         const buffer = Buffer.from(data.imageBase64, 'base64');
-        // Limit image size to 5MB
-        if (buffer.byteLength > 5 * 1024 * 1024) {
+        // File size is enforced by FileSizeGuard based on user's plan
+        if (buffer.byteLength > 100 * 1024 * 1024) {
           this.logger.warn('Task image too large, skipping upload');
         } else {
         const { error: uploadErr } = await this.supabase.storage.from('materials').upload(fileName, buffer, { contentType: data.imageMimeType });
@@ -459,9 +459,9 @@ export class TaskService {
     try {
       const response = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) });
       const buffer = await response.arrayBuffer();
-      // Limit response size to 10MB
-      if (buffer.byteLength > 10 * 1024 * 1024) {
-        return 'Gambar terlalu besar (maksimal 10MB).';
+      // Limit response size to 100MB (per-plan enforced by FileSizeGuard)
+      if (buffer.byteLength > 100 * 1024 * 1024) {
+        return 'Gambar terlalu besar.';
       }
       const base64 = Buffer.from(buffer).toString('base64');
       const mimeType = response.headers.get('content-type') || 'image/jpeg';
